@@ -35,8 +35,13 @@ Single-file project: all HTML, CSS, and JS lives in `index.html`. No dependencie
 | O / secondary | `#a8dadc` | O player, status text |
 | Draw | `#f4a261` | Draw score |
 
-## Git / GitHub
+## Git / GitHub — always commit and push
 
-A `Stop` hook in `.claude/settings.json` automatically runs `git add -A && git commit && git push origin master` after every Claude response that changes files. Manual commits are not needed — but use descriptive messages when committing manually.
+**Every session, every change — commit and push. No exceptions.**
+
+- After every code change, run `git add -A`, commit with a descriptive message, and push to `origin master`
+- A `Stop` hook in `.claude/settings.json` does this automatically after each Claude response
+- If the hook hasn't fired or a manual commit is needed: `git add -A && git commit -m "<description>" && git push origin master`
+- Never leave a session with uncommitted changes — the goal is that GitHub always reflects the current state
 
 Remote: `https://github.com/abeshkc/abeshkc.git` — branch `master`.
