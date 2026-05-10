@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -Command \"Set-Location 'C:\\Users\\Abesh\\Desktop\\ClaudeCodeApparel\\ClaudeCode'; git add -A; $diff = git diff --cached --name-only; if ($diff) { git commit -m 'Claude Code: auto-save'; git push origin main }\""
+            "command": "powershell -Command \"Set-Location 'C:\\Users\\Abesh\\Desktop\\ClaudeCodeApparel\\ClaudeCode'; git add -A; $diff = git diff --cached --name-only; if ($diff) { git commit -m 'Claude Code: auto-save'; git push origin master }\""
           }
         ]
       }
