@@ -94,26 +94,43 @@
     .score-box.o .value { color: #a8dadc; }
     .score-box.draw .value { color: #f4a261; }
 
-    #restart {
+    #controls {
+      display: flex;
+      gap: 1rem;
       margin-top: 1rem;
+    }
+
+    button {
       padding: 0.7rem 2rem;
       font-size: 1rem;
       border: none;
       border-radius: 8px;
-      background: #e94560;
-      color: #fff;
       cursor: pointer;
       letter-spacing: 1px;
       transition: background 0.2s, transform 0.1s;
     }
 
+    #restart {
+      background: #e94560;
+      color: #fff;
+    }
+
     #restart:hover { background: #c73652; transform: scale(1.04); }
+
+    #mode-toggle {
+      background: #16213e;
+      color: #a8dadc;
+      border: 2px solid #a8dadc;
+    }
+
+    #mode-toggle:hover { background: #0f3460; transform: scale(1.04); }
+    #mode-toggle.active { background: #0f3460; border-color: #e94560; color: #e94560; }
   </style>
 </head>
 <body>
 
   <h1>Tic Tac Toe</h1>
-  <div id="status">Player X's turn</div>
+  <div id="status"></div>
 
   <div id="board">
     <div class="cell" data-i="0"></div>
@@ -142,7 +159,10 @@
     </div>
   </div>
 
-  <button id="restart">New Game</button>
+  <div id="controls">
+    <button id="mode-toggle">vs AI</button>
+    <button id="restart">New Game</button>
+  </div>
 
   <script>
     const WINS = [
@@ -152,11 +172,14 @@
     ];
 
     let board, current, gameOver, scores;
+    let aiMode = false;
+    let aiThinking = false;
 
     function init() {
       board = Array(9).fill(null);
       current = 'X';
       gameOver = false;
+      aiThinking = false;
       scores = scores || { X: 0, O: 0, D: 0 };
       render();
     }
@@ -167,46 +190,99 @@
         cell.textContent = board[i] || '';
         cell.className = 'cell' + (board[i] ? ' taken ' + board[i].toLowerCase() : '');
       });
-      document.getElementById('status').textContent =
-        gameOver ? '' : `Player ${current}'s turn`;
+      if (!gameOver) {
+        const isAiTurn = aiMode && current === 'O';
+        document.getElementById('status').textContent =
+          isAiTurn ? 'AI is thinking…' : `Player ${current}'s turn`;
+      }
       document.getElementById('score-x').textContent = scores.X;
       document.getElementById('score-o').textContent = scores.O;
       document.getElementById('score-draw').textContent = scores.D;
     }
 
-    function checkWin() {
-      return WINS.find(([a,b,c]) =>
-        board[a] && board[a] === board[b] && board[a] === board[c]
-      ) || null;
+    function getWinner(b) {
+      const line = WINS.find(([p,q,r]) => b[p] && b[p] === b[q] && b[p] === b[r]);
+      return line ? b[line[0]] : null;
     }
 
-    document.getElementById('board').addEventListener('click', e => {
-      const cell = e.target.closest('.cell');
-      if (!cell || gameOver) return;
-      const i = +cell.dataset.i;
-      if (board[i]) return;
+    // Minimax — AI plays as 'O' (maximizing), human as 'X' (minimizing)
+    function minimax(b, isMax, depth) {
+      const winner = getWinner(b);
+      if (winner === 'O') return 10 - depth;
+      if (winner === 'X') return depth - 10;
+      if (b.every(Boolean)) return 0;
 
+      let best = isMax ? -Infinity : Infinity;
+      for (let i = 0; i < 9; i++) {
+        if (!b[i]) {
+          b[i] = isMax ? 'O' : 'X';
+          const score = minimax(b, !isMax, depth + 1);
+          b[i] = null;
+          best = isMax ? Math.max(best, score) : Math.min(best, score);
+        }
+      }
+      return best;
+    }
+
+    function getBestMove() {
+      let best = -Infinity, move = -1;
+      for (let i = 0; i < 9; i++) {
+        if (!board[i]) {
+          board[i] = 'O';
+          const score = minimax(board, false, 0);
+          board[i] = null;
+          if (score > best) { best = score; move = i; }
+        }
+      }
+      return move;
+    }
+
+    function resolveMove(i) {
       board[i] = current;
       render();
 
-      const win = checkWin();
-      if (win) {
+      const winLine = WINS.find(([p,q,r]) => board[p] && board[p] === board[q] && board[p] === board[r]);
+      if (winLine) {
         gameOver = true;
         scores[current]++;
-        document.getElementById('status').textContent = `Player ${current} wins!`;
-        win.forEach(idx =>
+        document.getElementById('status').textContent =
+          aiMode && current === 'O' ? 'AI wins!' : `Player ${current} wins!`;
+        winLine.forEach(idx =>
           document.querySelector(`[data-i="${idx}"]`).classList.add('win')
         );
-        render();
       } else if (board.every(Boolean)) {
         gameOver = true;
         scores.D++;
         document.getElementById('status').textContent = "It's a draw!";
-        render();
       } else {
         current = current === 'X' ? 'O' : 'X';
         render();
+        if (aiMode && current === 'O' && !gameOver) {
+          aiThinking = true;
+          setTimeout(() => {
+            aiThinking = false;
+            if (!gameOver) resolveMove(getBestMove());
+          }, 400);
+        }
       }
+    }
+
+    document.getElementById('board').addEventListener('click', e => {
+      const cell = e.target.closest('.cell');
+      if (!cell || gameOver || aiThinking) return;
+      if (aiMode && current === 'O') return;
+      const i = +cell.dataset.i;
+      if (board[i]) return;
+      resolveMove(i);
+    });
+
+    document.getElementById('mode-toggle').addEventListener('click', () => {
+      aiMode = !aiMode;
+      const btn = document.getElementById('mode-toggle');
+      btn.textContent = aiMode ? '2 Players' : 'vs AI';
+      btn.classList.toggle('active', aiMode);
+      scores = { X: 0, O: 0, D: 0 };
+      init();
     });
 
     document.getElementById('restart').addEventListener('click', init);
