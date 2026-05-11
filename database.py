@@ -64,6 +64,9 @@ def _migrate() -> None:
         "ALTER TABLE notes ADD COLUMN llm_intent TEXT",
         "ALTER TABLE notes ADD COLUMN llm_confidence REAL",
         "ALTER TABLE notes ADD COLUMN created_from_voice INTEGER NOT NULL DEFAULT 0",
+        # importance (phase 3)
+        "ALTER TABLE reminders ADD COLUMN importance TEXT NOT NULL DEFAULT 'Normal'",
+        "ALTER TABLE notes     ADD COLUMN importance TEXT NOT NULL DEFAULT 'Normal'",
     ]
     with get_connection() as conn:
         for sql in new_columns:

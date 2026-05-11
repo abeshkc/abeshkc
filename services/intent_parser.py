@@ -19,18 +19,28 @@ Schema:
     "participants": [],
     "tags": [],
     "priority": "normal",
+    "importance": "Normal",
     "recurrence": "none",
-    "search_query": ""
+    "search_query": "",
+    "linked_note_title": "",
+    "linked_note_id": null
   },
   "action_summary": "",
   "missing_fields": []
 }
 
 Rules:
-- Set datetime as a natural language string the app can parse (e.g. "tomorrow at 10pm", "next friday at 2pm", "today at 5pm").
+- Set datetime as a natural language string the app can parse (e.g. "tomorrow at 10pm", "next friday at 2pm").
 - Set requires_confirmation=true only for delete or overwrite actions.
 - Set confidence based on how unambiguous the intent is (1.0 = fully clear, 0.0 = no idea).
 - missing_fields lists field names the user did not specify (e.g. ["time"] if no time was given).
+- importance must be exactly one of: "Low", "Normal", "High", "Urgent".
+  Extract importance from phrasing:
+    "urgent", "asap", "emergency", "critical"   → "Urgent"
+    "important", "high priority", "must"         → "High"
+    "low priority", "whenever", "not urgent"     → "Low"
+    (default)                                    → "Normal"
+- linked_note_title: fill if user references a note by name; otherwise leave empty.
 - Return ONLY the JSON object. No other text.\
 """
 

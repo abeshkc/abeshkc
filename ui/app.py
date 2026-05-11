@@ -11,14 +11,15 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("NoteRemind")
-        self.geometry("1100x700")
-        self.minsize(860, 540)
+        self.geometry("1120x720")
+        self.minsize(880, 560)
         self._build_sidebar()
         self._build_content()
-        self.show_voice()   # Voice is the default view
+        self.show_voice()               # Voice is the default view
+        self.after(500, self.update_missed_badge)  # check missed on start
 
     def _build_sidebar(self):
-        self.sidebar = ctk.CTkFrame(self, width=168, corner_radius=0)
+        self.sidebar = ctk.CTkFrame(self, width=172, corner_radius=0)
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
 
@@ -28,7 +29,7 @@ class App(ctk.CTk):
             font=ctk.CTkFont(size=16, weight="bold"),
         ).pack(pady=(24, 16))
 
-        # Voice — primary, always visible, prominent
+        # Voice — prominent, default
         self._btn_voice = ctk.CTkButton(
             self.sidebar,
             text="🎙  Voice",
@@ -40,7 +41,6 @@ class App(ctk.CTk):
         )
         self._btn_voice.pack(padx=12, pady=(0, 6), fill="x")
 
-        # Divider
         ctk.CTkFrame(self.sidebar, height=1, fg_color="#333344").pack(
             fill="x", padx=12, pady=(4, 10)
         )
@@ -85,6 +85,7 @@ class App(ctk.CTk):
         self.voice_panel.pack_forget()
         self.reminders_view.pack(fill="both", expand=True)
         self.reminders_view.refresh()
+        self.update_missed_badge()
 
     # ── voice → form fill ─────────────────────────────────────────────────
 
@@ -96,8 +97,38 @@ class App(ctk.CTk):
         self.show_notes()
         self.notes_view.fill_from_voice(fields, transcription)
 
+    # ── missed reminder badge ─────────────────────────────────────────────
+
+    def update_missed_badge(self):
+        try:
+            from core.reminders import count_overdue
+            missed = count_overdue()
+        except Exception:
+            missed = 0
+        if missed > 0:
+            self._btn_reminders.configure(text=f"Reminders  🔴 {missed}")
+        else:
+            self._btn_reminders.configure(text="Reminders")
+
+    # ── in-app reminder popup ─────────────────────────────────────────────
+
+    def show_reminder_popup(self, reminder: dict):
+        from ui.reminder_popup import ReminderPopup
+
+        def on_done(rid: int):
+            from core.reminders import mark_done
+            mark_done(rid)
+            self._refresh_all()
+            self.update_missed_badge()
+
+        try:
+            ReminderPopup(self, reminder, on_done=on_done, on_open=self.show_reminders)
+        except Exception as exc:
+            print(f"[popup] {exc}")
+
     # ── shared ────────────────────────────────────────────────────────────
 
     def _refresh_all(self):
         self.notes_view.refresh()
         self.reminders_view.refresh()
+        self.update_missed_badge()

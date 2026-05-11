@@ -1,4 +1,4 @@
-"""Voice-first assistant panel for NoteRemind."""
+"""Voice-first assistant panel — recording, transcription, review, form fill."""
 import os
 import re
 import math
@@ -13,35 +13,38 @@ from services.speech_to_text import transcribe_audio
 from services.intent_parser import parse_intent as claude_parse_intent
 from services.local_whisper_service import current_model_size
 from core.parser import parse_datetime
-from core.notes import create_note
+from core.notes import create_note, IMPORTANCE_LEVELS
 from core.reminders import create_reminder
 
 CONFIDENCE_AUTO   = 0.85
 CONFIDENCE_REVIEW = 0.60
 
+_IMPORTANCE_COLORS = {
+    "Low": "#777777", "Normal": "#aaaaaa", "High": "#e67e22", "Urgent": "#e74c3c"
+}
 _INTENT_LABELS = {
-    "create_reminder":     "Create Reminder",
-    "create_appointment":  "Create Appointment",
-    "create_meeting_note": "Create Meeting Note",
+    "create_reminder":     "Reminder",
+    "create_appointment":  "Appointment",
+    "create_meeting_note": "Meeting Note",
     "search":              "Search",
     "update_reminder":     "Update Reminder",
     "unknown":             "Unknown",
 }
 
-_NUM_BARS  = 12
-_BAR_W     = 12
-_BAR_GAP   = 8
-_CANVAS_H  = 52
-_CANVAS_W  = _NUM_BARS * (_BAR_W + _BAR_GAP)
+_NUM_BARS = 12
+_BAR_W    = 12
+_BAR_GAP  = 8
+_CAN_H    = 52
+_CAN_W    = _NUM_BARS * (_BAR_W + _BAR_GAP)
 
 
 class VoicePanel(ctk.CTkFrame):
     def __init__(self, master, on_action=None, on_fill_reminder=None, on_fill_note=None):
         super().__init__(master, fg_color="transparent")
-        self._recorder        = AudioRecorder()
-        self._on_action       = on_action
+        self._recorder         = AudioRecorder()
+        self._on_action        = on_action
         self._on_fill_reminder = on_fill_reminder
-        self._on_fill_note    = on_fill_note
+        self._on_fill_note     = on_fill_note
         self._last_action: dict | None = None
         self._last_transcription: str  = ""
         self._autosave_var = ctk.BooleanVar(value=False)
@@ -52,62 +55,63 @@ class VoicePanel(ctk.CTkFrame):
     # ── layout ────────────────────────────────────────────────────────────
 
     def _build(self):
-        # Title
+        # Title + example
         hdr = ctk.CTkFrame(self, fg_color="transparent")
         hdr.pack(fill="x", padx=20, pady=(20, 2))
-        ctk.CTkLabel(
-            hdr, text="🎙  Voice Assistant",
-            font=ctk.CTkFont(size=22, weight="bold"),
-        ).pack(anchor="w")
+        ctk.CTkLabel(hdr, text="🎙  Voice Assistant",
+                     font=ctk.CTkFont(size=22, weight="bold")).pack(anchor="w")
         ctk.CTkLabel(
             hdr,
-            text='Say things like:  "Create a reminder for meeting with Yaseen tomorrow at 10 PM"',
+            text='Say things like:  "Urgent reminder — meeting with Yaseen tomorrow at 10 PM"',
             text_color="gray", font=ctk.CTkFont(size=12),
         ).pack(anchor="w", pady=(3, 0))
 
-        # API status banner
+        # Status banner
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
-        banner = ctk.CTkFrame(self, fg_color="#1a1e2a", corner_radius=6)
+        banner  = ctk.CTkFrame(self, fg_color="#1a1e2a", corner_radius=6)
         banner.pack(fill="x", padx=20, pady=(12, 0))
         ctk.CTkLabel(
             banner,
-            text=("STT: local Whisper  ·  Parser: Claude API  ·  Audio stays on your device"
+            text=("🎤 Speech recognition: local Whisper  ·  🤖 Understanding: Claude AI"
                   if has_key else
                   "⚠  ANTHROPIC_API_KEY missing — add it to .env.  Falling back to rule-based parser."),
             text_color="#5d8dbb" if has_key else "#e07b3c",
             font=ctk.CTkFont(size=11),
         ).pack(padx=12, pady=7, anchor="w")
 
-        # Waveform canvas
+        # Waveform
         wave_wrap = ctk.CTkFrame(self, fg_color="transparent")
         wave_wrap.pack(pady=(18, 6))
         self._canvas = tk.Canvas(
-            wave_wrap, width=_CANVAS_W, height=_CANVAS_H,
+            wave_wrap, width=_CAN_W, height=_CAN_H,
             bg="#1a1e2a", highlightthickness=0,
         )
         self._canvas.pack()
         self._bar_ids: list[tuple] = []
         for i in range(_NUM_BARS):
-            x1 = i * (_BAR_W + _BAR_GAP) + 2
-            x2 = x1 + _BAR_W
+            x1  = i * (_BAR_W + _BAR_GAP) + 2
+            x2  = x1 + _BAR_W
             bid = self._canvas.create_rectangle(
-                x1, _CANVAS_H - 4, x2, _CANVAS_H, fill="#2d4a6b", width=0
+                x1, _CAN_H - 4, x2, _CAN_H, fill="#2d4a6b", width=0
             )
             self._bar_ids.append((bid, x1, x2))
 
-        # Mic button — centred
+        # Mic button
         self._mic_btn = ctk.CTkButton(
-            self, text="🎙  Start Recording",
-            width=210, height=54,
+            self, text="Press to start speaking",
+            width=230, height=54,
             font=ctk.CTkFont(size=15, weight="bold"),
             corner_radius=27,
             command=self._toggle,
         )
         self._mic_btn.pack(pady=(2, 6))
 
-        # Status line
+        # Progress bar (hidden until processing)
+        self._progress = ctk.CTkProgressBar(self, width=300, mode="indeterminate")
+
+        # Status label
         self._status = ctk.CTkLabel(
-            self, text="Ready — click to speak",
+            self, text="Ready — press the button to speak",
             text_color="gray", font=ctk.CTkFont(size=12),
         )
         self._status.pack(pady=(0, 10))
@@ -116,7 +120,7 @@ class VoicePanel(ctk.CTkFrame):
         ctk.CTkLabel(self, text="Transcription:", anchor="w",
                      font=ctk.CTkFont(size=12)).pack(anchor="w", padx=20, pady=(4, 2))
         self._preview = ctk.CTkTextbox(
-            self, height=64, wrap="word", state="disabled",
+            self, height=60, wrap="word", state="disabled",
             font=ctk.CTkFont(size=12),
         )
         self._preview.pack(fill="x", padx=20, pady=(0, 8))
@@ -124,7 +128,7 @@ class VoicePanel(ctk.CTkFrame):
         # Result panel — packed on demand
         self._result_panel = ctk.CTkFrame(self, corner_radius=8)
 
-        # Auto-save toggle pinned to bottom
+        # Auto-save toggle at bottom
         bottom = ctk.CTkFrame(self, fg_color="transparent")
         bottom.pack(side="bottom", fill="x", padx=20, pady=(0, 16))
         ctk.CTkSwitch(
@@ -139,10 +143,8 @@ class VoicePanel(ctk.CTkFrame):
 
     def _toggle(self):
         if not AUDIO_AVAILABLE:
-            mb.showerror(
-                "Missing dependency",
-                "Install audio packages:\n\npip install sounddevice scipy numpy",
-            )
+            mb.showerror("Missing dependency",
+                         "Install audio packages:\n\npip install sounddevice scipy numpy")
             return
         if self._recorder.is_recording:
             self._stop()
@@ -157,47 +159,68 @@ class VoicePanel(ctk.CTkFrame):
             self._set_status(f"Microphone error: {exc}", "#e74c3c")
             return
         self._mic_btn.configure(
-            text="⏹  Stop Recording", fg_color="#c0392b", hover_color="#922b21"
+            text="Listening… press to stop",
+            fg_color="#c0392b", hover_color="#922b21",
         )
-        self._set_status("🔴  Listening… speak now", "#e74c3c")
+        self._set_status("Recording…", "#e74c3c")
         self._set_preview("")
         self._animate_bars()
 
     def _stop(self):
         self._mic_btn.configure(
-            text="🎙  Start Recording",
-            fg_color=["#3B8ED0", "#1F6AA5"],
-            hover_color=["#36719F", "#144870"],
+            text="Processing your speech…",
+            fg_color="#555555", hover_color="#555555",
+            state="disabled",
         )
-        self._set_status("Processing transcription…", "gray")
+        self._set_status("Transcribing with local Whisper…", "gray")
+        self._progress.pack(pady=(0, 6))
+        self._progress.start()
         audio_path = self._recorder.stop()
         threading.Thread(target=self._pipeline, args=(audio_path,), daemon=True).start()
+
+    def _re_enable_btn(self):
+        self._progress.stop()
+        self._progress.pack_forget()
+        self._mic_btn.configure(
+            text="Press to start speaking",
+            fg_color=["#3B8ED0", "#1F6AA5"],
+            hover_color=["#36719F", "#144870"],
+            state="normal",
+        )
 
     # ── pipeline ──────────────────────────────────────────────────────────
 
     def _pipeline(self, audio_path: str):
+        # Stage 1 — transcription
         try:
             text = transcribe_audio(audio_path)
         except Exception as exc:
-            self._ui(lambda: self._set_status(f"Transcription error: {exc}", "#e74c3c"))
+            self._ui(lambda: (
+                self._set_status(f"Transcription error: {exc}", "#e74c3c"),
+                self._re_enable_btn(),
+            ))
             return
         finally:
             self._recorder.cleanup()
 
         if not text:
-            self._ui(lambda: self._set_status("No speech detected. Try again.", "#e67e22"))
+            self._ui(lambda: (
+                self._set_status("No speech detected. Try again.", "#e67e22"),
+                self._re_enable_btn(),
+            ))
             return
 
         self._last_transcription = text
         self._ui(lambda: self._set_preview(text))
 
+        # Stage 2 — intent parsing
         if not os.environ.get("ANTHROPIC_API_KEY"):
             self._ui(lambda: self._set_status(
-                "ANTHROPIC_API_KEY missing — using rule-based parser.", "#e74c3c"
-            ))
+                "API key missing — using rule-based parser.", "#e74c3c"))
             action = _rule_based_intent(text)
         else:
-            self._ui(lambda: self._set_status("Parsing with Claude API…", "gray"))
+            self._ui(lambda: self._set_status(
+                "Understanding your request with Claude AI…", "gray"))
             try:
                 action = claude_parse_intent(text)
             except RuntimeError as exc:
@@ -206,12 +229,12 @@ class VoicePanel(ctk.CTkFrame):
                 action = _rule_based_intent(text)
             except Exception:
                 self._ui(lambda: self._set_status(
-                    "Claude API error — using rule-based parser.", "#e67e22"
-                ))
+                    "Claude error — using rule-based parser.", "#e67e22"))
                 action = _rule_based_intent(text)
 
         self._last_action = action
-        self._ui(lambda: self._show_result(text, action))
+        self._ui(lambda: self._set_status("Filling preview…", "gray"))
+        self._ui(lambda: (self._re_enable_btn(), self._show_result(text, action)))
 
     # ── result panel ──────────────────────────────────────────────────────
 
@@ -219,90 +242,118 @@ class VoicePanel(ctk.CTkFrame):
         for w in self._result_panel.winfo_children():
             w.destroy()
 
-        intent      = action.get("intent", "unknown")
-        confidence  = float(action.get("confidence", 0.0))
-        fields      = action.get("fields", {})
-        missing     = action.get("missing_fields", [])
-        is_dest     = (intent == "update_reminder" or
-                       action.get("requires_confirmation", False))
-        can_fill    = intent in ("create_reminder", "create_appointment", "create_meeting_note")
+        intent     = action.get("intent", "unknown")
+        confidence = float(action.get("confidence", 0.0))
+        fields     = action.get("fields", {})
+        missing    = action.get("missing_fields", [])
+        is_dest    = (intent == "update_reminder" or
+                      action.get("requires_confirmation", False))
+        can_fill   = intent in ("create_reminder", "create_appointment",
+                                "create_meeting_note")
 
-        intent_label = _INTENT_LABELS.get(intent, intent)
-        conf_color   = ("#27ae60" if confidence >= CONFIDENCE_AUTO else
-                        "#e67e22" if confidence >= CONFIDENCE_REVIEW else "#e74c3c")
+        label      = _INTENT_LABELS.get(intent, intent)
+        imp        = fields.get("importance", "Normal")
+        if imp not in ("Low", "Normal", "High", "Urgent"):
+            imp = "Normal"
+        imp_color  = _IMPORTANCE_COLORS.get(imp, "gray")
+        conf_color = ("#27ae60" if confidence >= CONFIDENCE_AUTO else
+                      "#e67e22" if confidence >= CONFIDENCE_REVIEW else "#e74c3c")
 
-        # Intent + confidence
-        row = ctk.CTkFrame(self._result_panel, fg_color="transparent")
-        row.pack(fill="x", padx=14, pady=(12, 4))
-        ctk.CTkLabel(row, text=f"Detected: {intent_label}",
+        # ── Header row ──
+        top = ctk.CTkFrame(self._result_panel, fg_color="transparent")
+        top.pack(fill="x", padx=14, pady=(12, 6))
+        ctk.CTkLabel(top, text=f"Type: {label}",
                      font=ctk.CTkFont(size=13, weight="bold")).pack(side="left")
-        ctk.CTkLabel(row, text=f"  {confidence:.0%} confidence",
-                     text_color=conf_color,
-                     font=ctk.CTkFont(size=12)).pack(side="left")
+        ctk.CTkLabel(top, text=f"  {confidence:.0%} confidence",
+                     text_color=conf_color, font=ctk.CTkFont(size=12)).pack(side="left")
+        ctk.CTkLabel(top, text=f"  ● {imp}",
+                     text_color=imp_color, font=ctk.CTkFont(size=12)).pack(side="left")
 
-        # Extracted fields
-        parts: list[str] = []
-        for k in ("title", "datetime", "date", "time", "description", "recurrence"):
-            v = (fields.get(k) or "").strip()
-            if v and v != "none":
-                parts.append(f"{k}: {v}")
-        if fields.get("participants"):
-            parts.append("participants: " + ", ".join(fields["participants"]))
+        # ── Field table ─
+        rows: list[tuple[str, str]] = []
+
+        if intent in ("create_reminder", "create_appointment"):
+            rows += [
+                ("Title",       fields.get("title", "")),
+                ("Date / Time", fields.get("datetime") or
+                                f"{fields.get('date','')} {fields.get('time','')}".strip()),
+                ("Repeat",      fields.get("recurrence", "none")),
+                ("Description", fields.get("description", "")),
+            ]
+        elif intent == "create_meeting_note":
+            rows += [
+                ("Title",        fields.get("title", "")),
+                ("Meeting time", fields.get("datetime", "")),
+                ("Description",  fields.get("description", "")),
+            ]
+            if fields.get("participants"):
+                rows.append(("Participants",
+                             ", ".join(fields["participants"])))
+
         if fields.get("tags"):
-            parts.append("tags: " + ", ".join(fields["tags"]))
+            rows.append(("Tags", ", ".join(fields["tags"])))
+        if fields.get("linked_note_title"):
+            rows.append(("Linked note", fields["linked_note_title"]))
         if missing:
-            parts.append("⚠ missing: " + ", ".join(missing))
-        if parts:
-            ctk.CTkLabel(
-                self._result_panel,
-                text="  " + "\n  ".join(parts),
-                justify="left", text_color="#999999",
-                font=ctk.CTkFont(size=11),
-            ).pack(anchor="w", padx=14, pady=(0, 6))
+            rows.append(("⚠ Missing", ", ".join(missing)))
+        rows.append(("Transcription", transcription))
 
-        # Guidance message
+        tbl = ctk.CTkFrame(self._result_panel, fg_color="transparent")
+        tbl.pack(fill="x", padx=14, pady=(0, 8))
+        for key, val in rows:
+            if not val or val.strip() == "none":
+                continue
+            row_f = ctk.CTkFrame(tbl, fg_color="transparent")
+            row_f.pack(fill="x", pady=1)
+            ctk.CTkLabel(row_f, text=f"{key}:", width=100, anchor="e",
+                         text_color="#888888",
+                         font=ctk.CTkFont(size=11)).pack(side="left", padx=(0, 6))
+            ctk.CTkLabel(row_f, text=val, anchor="w",
+                         font=ctk.CTkFont(size=11),
+                         wraplength=380).pack(side="left", fill="x")
+
+        # ── Guidance ──
         if intent == "unknown" or confidence < CONFIDENCE_REVIEW:
             guide       = "Low confidence — please rephrase or type manually."
             guide_color = "#e74c3c"
         else:
-            guide       = "I filled the form — please review before saving."
+            guide       = "Review the details above before saving."
             guide_color = "#27ae60" if confidence >= CONFIDENCE_AUTO else "#e67e22"
-        ctk.CTkLabel(
-            self._result_panel, text=guide, text_color=guide_color,
-            font=ctk.CTkFont(size=12), wraplength=500,
-        ).pack(anchor="w", padx=14, pady=(0, 10))
+        ctk.CTkLabel(self._result_panel, text=guide, text_color=guide_color,
+                     font=ctk.CTkFont(size=12), wraplength=500).pack(
+            anchor="w", padx=14, pady=(0, 10))
 
-        # Action buttons
+        # ── Buttons: Insert into form | Save | Re-record | Cancel ──
         btn_row = ctk.CTkFrame(self._result_panel, fg_color="transparent")
         btn_row.pack(fill="x", padx=14, pady=(0, 14))
 
         if can_fill:
             ctk.CTkButton(
-                btn_row, text="Insert into form", width=145,
+                btn_row, text="Insert into form", width=140,
                 command=lambda: self._do_insert(intent, fields, transcription),
             ).pack(side="left", padx=(0, 8))
 
         if can_fill and not is_dest:
             ctk.CTkButton(
-                btn_row, text="Save after review", width=145,
+                btn_row, text="Save", width=90,
                 fg_color="#1a7a3a", hover_color="#155c2b",
                 command=lambda: self._do_save(intent, fields, transcription, action),
             ).pack(side="left", padx=(0, 8))
 
         ctk.CTkButton(
-            btn_row, text="Try again", width=90,
+            btn_row, text="Re-record", width=95,
             fg_color="transparent", border_width=1,
-            command=self._try_again,
+            command=self._re_record,
         ).pack(side="left", padx=(0, 8))
 
         ctk.CTkButton(
-            btn_row, text="Discard", width=80,
+            btn_row, text="Cancel", width=80,
             fg_color="transparent", border_width=1, text_color="#e74c3c",
-            command=self._discard,
+            command=self._cancel,
         ).pack(side="left")
 
         self._result_panel.pack(fill="x", padx=20, pady=(0, 12))
-        self._set_status(f"Parsed: {intent_label}", "#aaaaaa")
+        self._set_status("Ready for review", "#27ae60")
 
     def _hide_result(self):
         self._result_panel.pack_forget()
@@ -315,8 +366,7 @@ class VoicePanel(ctk.CTkFrame):
             if self._on_fill_reminder:
                 self._on_fill_reminder(fields)
                 self._set_status(
-                    "Filled the reminder form — review and click Create Reminder.", "#27ae60"
-                )
+                    "Filled the reminder form — review and click Create Reminder.", "#27ae60")
             else:
                 self._set_status("No reminder form available.", "#e74c3c")
         elif intent == "create_meeting_note":
@@ -331,37 +381,33 @@ class VoicePanel(ctk.CTkFrame):
         is_dest     = (intent == "update_reminder" or
                        action.get("requires_confirmation", False))
         auto_on     = self._autosave_var.get()
-
-        # Destructive actions always confirm; non-auto-save always confirms
         needs_confirm = is_dest or not auto_on or confidence < CONFIDENCE_AUTO
         if needs_confirm:
             summary = action.get("action_summary", intent)
-            if not mb.askyesno(
-                "Confirm Save",
-                f"{summary}\n\nConfidence: {confidence:.0%}\n\nSave now?",
-            ):
+            if not mb.askyesno("Confirm Save",
+                               f"{summary}\n\nConfidence: {confidence:.0%}\n\nSave now?"):
                 return
-
         try:
             msg = self._execute(intent, fields, transcription)
         except Exception as exc:
             self._set_status(f"Error: {exc}", "#e74c3c")
             return
-
         self._set_status(f"Saved: {msg}", "#27ae60")
         self._hide_result()
         if self._on_action:
             self._on_action()
 
-    def _try_again(self):
+    def _re_record(self):
         self._hide_result()
         self._set_preview("")
-        self._set_status("Ready — click to speak", "gray")
+        self._set_status("Ready — press the button to speak again", "gray")
+        # Immediately start a new recording
+        self._start()
 
-    def _discard(self):
+    def _cancel(self):
         self._hide_result()
         self._set_preview("")
-        self._set_status("Discarded.", "gray")
+        self._set_status("Cancelled.", "gray")
 
     # ── execution ─────────────────────────────────────────────────────────
 
@@ -384,16 +430,19 @@ class VoicePanel(ctk.CTkFrame):
         recur = fields.get("recurrence", "none")
         if recur not in ("none", "daily", "weekly", "monthly", "yearly"):
             recur = "none"
+        imp = fields.get("importance", "Normal")
         create_reminder(title, due, message=fields.get("description", ""),
-                        recurrence_type=recur)
+                        recurrence_type=recur, importance=imp)
         return f'"{title}" — {due.strftime("%A, %b %d at %H:%M")}'
 
     def _make_note(self, fields: dict, transcription: str) -> str:
         description = fields.get("description") or transcription
         title       = fields.get("title") or _auto_title(description)
         tags        = ", ".join(fields.get("tags") or [])
+        imp         = fields.get("importance", "Normal")
         create_note(title, content=description, tags=tags, source_type="voice",
-                    original_transcription=transcription, llm_intent="create_meeting_note")
+                    original_transcription=transcription,
+                    llm_intent="create_meeting_note", importance=imp)
         return f'Note: "{title}"'
 
     # ── animation ─────────────────────────────────────────────────────────
@@ -415,20 +464,20 @@ class VoicePanel(ctk.CTkFrame):
             return
         if not self._recorder.is_recording:
             for bid, x1, x2 in self._bar_ids:
-                self._canvas.coords(bid, x1, _CANVAS_H - 4, x2, _CANVAS_H)
+                self._canvas.coords(bid, x1, _CAN_H - 4, x2, _CAN_H)
                 self._canvas.itemconfig(bid, fill="#2d4a6b")
             return
         level = self._recorder.current_level
         for bid, x1, x2 in self._bar_ids:
             noise = random.uniform(0.0, 0.4)
-            h     = int(4 + min(level + noise, 1.0) * (_CANVAS_H - 6))
+            h     = int(4 + min(level + noise, 1.0) * (_CAN_H - 6))
             h     = max(h, 4)
             inten = min(level + noise * 0.5, 1.0)
-            r     = min(30  + int(inten * 120), 220)
-            g     = min(100 + int(inten * 140), 240)
-            b     = max(200 - int(inten * 60),  100)
-            self._canvas.coords(bid, x1, _CANVAS_H - h, x2, _CANVAS_H)
-            self._canvas.itemconfig(bid, fill=f"#{r:02x}{g:02x}{b:02x}")
+            r_    = min(30  + int(inten * 120), 220)
+            g_    = min(100 + int(inten * 140), 240)
+            b_    = max(200 - int(inten * 60),  100)
+            self._canvas.coords(bid, x1, _CAN_H - h, x2, _CAN_H)
+            self._canvas.itemconfig(bid, fill=f"#{r_:02x}{g_:02x}{b_:02x}")
         self.after(80, self._animate_bars)
 
     # ── helpers ───────────────────────────────────────────────────────────
@@ -450,7 +499,6 @@ class VoicePanel(ctk.CTkFrame):
 # ── rule-based fallback ───────────────────────────────────────────────────────
 
 def _rule_based_intent(text: str) -> dict:
-    """Keyword-based parser used when Claude API is not available."""
     t = text.lower().strip()
 
     if any(w in t for w in ["remind", "reminder", "appointment", "schedule", "alert"]):
@@ -461,6 +509,14 @@ def _rule_based_intent(text: str) -> dict:
         intent = "search"
     else:
         intent = "unknown"
+
+    importance = "Normal"
+    if any(w in t for w in ["urgent", "asap", "emergency", "critical"]):
+        importance = "Urgent"
+    elif any(w in t for w in ["important", "high priority", "must"]):
+        importance = "High"
+    elif any(w in t for w in ["low priority", "whenever", "not urgent"]):
+        importance = "Low"
 
     title = ""
     patterns = [
@@ -484,8 +540,10 @@ def _rule_based_intent(text: str) -> dict:
             "title": title, "description": text,
             "datetime": text, "date": "", "time": "",
             "participants": [], "tags": [],
-            "priority": "normal", "recurrence": "none",
+            "priority": "normal", "importance": importance,
+            "recurrence": "none",
             "search_query": text if intent == "search" else "",
+            "linked_note_title": "", "linked_note_id": None,
         },
         "action_summary": f"[Rule-based] {intent}: {title}",
         "missing_fields": [],

@@ -323,14 +323,14 @@ class TestClaudeIsDefault(unittest.TestCase):
         print("  PASS test_autosave_default_is_off")
 
     def test_result_panel_has_insert_and_discard(self):
-        """_show_result source must wire Insert into form and Discard buttons."""
+        """_show_result source must wire Insert into form, Save, Re-record, Cancel buttons."""
         import inspect
         import ui.voice_panel as vp
         src = inspect.getsource(vp.VoicePanel._show_result)
         self.assertIn("Insert into form", src)
-        self.assertIn("Save after review", src)
-        self.assertIn("Try again", src)
-        self.assertIn("Discard", src)
+        self.assertIn("Save", src)
+        self.assertIn("Re-record", src)
+        self.assertIn("Cancel", src)
         print("  PASS test_result_panel_has_insert_and_discard")
 
     def test_destructive_action_hidden_from_save_button(self):
@@ -668,6 +668,215 @@ class TestVoicePipeline(unittest.TestCase):
         print("  PASS test_note_stores_transcription")
 
 
+# ── importance field ──────────────────────────────────────────────────────────
+
+class TestImportanceField(unittest.TestCase):
+
+    def test_importance_levels_defined(self):
+        from core.reminders import IMPORTANCE_LEVELS
+        from core.notes import IMPORTANCE_LEVELS as NL
+        for lvl in ("Low", "Normal", "High", "Urgent"):
+            self.assertIn(lvl, IMPORTANCE_LEVELS)
+            self.assertIn(lvl, NL)
+        print("  PASS test_importance_levels_defined")
+
+    def test_reminder_created_with_importance(self):
+        from core.reminders import create_reminder, list_reminders
+        from datetime import datetime, timedelta
+        due = datetime.now() + timedelta(hours=2)
+        rid = create_reminder("Urgent meeting", due, importance="Urgent")
+        reminders = list_reminders(include_done=False)
+        match = next((r for r in reminders if r["id"] == rid), None)
+        self.assertIsNotNone(match)
+        self.assertEqual(match["importance"], "Urgent")
+        print("  PASS test_reminder_created_with_importance")
+
+    def test_note_created_with_importance(self):
+        from core.notes import create_note, get_note
+        nid = create_note("High importance note", importance="High")
+        note = get_note(nid)
+        self.assertIsNotNone(note)
+        self.assertEqual(note["importance"], "High")
+        print("  PASS test_note_created_with_importance")
+
+    def test_importance_extracted_from_voice_urgent(self):
+        from ui.voice_panel import _rule_based_intent
+        result = _rule_based_intent("Urgent reminder to call the doctor today at 3pm")
+        self.assertEqual(result["fields"]["importance"], "Urgent")
+        print("  PASS test_importance_extracted_from_voice_urgent")
+
+    def test_importance_extracted_from_voice_high(self):
+        from ui.voice_panel import _rule_based_intent
+        result = _rule_based_intent("Important meeting note about the project review")
+        self.assertEqual(result["fields"]["importance"], "High")
+        print("  PASS test_importance_extracted_from_voice_high")
+
+    def test_importance_extracted_from_voice_low(self):
+        from ui.voice_panel import _rule_based_intent
+        result = _rule_based_intent("Low priority reminder to clean the desk")
+        self.assertEqual(result["fields"]["importance"], "Low")
+        print("  PASS test_importance_extracted_from_voice_low")
+
+    def test_default_importance_is_normal(self):
+        from ui.voice_panel import _rule_based_intent
+        result = _rule_based_intent("Remind me about the standup tomorrow at 9am")
+        self.assertEqual(result["fields"]["importance"], "Normal")
+        print("  PASS test_default_importance_is_normal")
+
+    def test_intent_parser_schema_has_importance(self):
+        import services.intent_parser as ip
+        self.assertIn("importance", ip._SYSTEM)
+        self.assertIn("Urgent", ip._SYSTEM)
+        self.assertIn("High", ip._SYSTEM)
+        print("  PASS test_intent_parser_schema_has_importance")
+
+
+# ── sorting ───────────────────────────────────────────────────────────────────
+
+class TestSorting(unittest.TestCase):
+
+    def test_sort_reminders_by_importance(self):
+        from core.reminders import create_reminder, list_reminders
+        from datetime import datetime, timedelta
+        base = datetime.now() + timedelta(hours=10)
+        create_reminder("Low task",    base, importance="Low")
+        create_reminder("Urgent task", base + timedelta(hours=1), importance="Urgent")
+        create_reminder("High task",   base + timedelta(hours=2), importance="High")
+        result = list_reminders(include_done=False, sort_by="importance", ascending=True)
+        imps = [r["importance"] for r in result if r["title"] in
+                ("Low task", "High task", "Urgent task")]
+        self.assertEqual(imps, sorted(imps, key=lambda x: {"Low":0,"Normal":1,"High":2,"Urgent":3}[x]))
+        print("  PASS test_sort_reminders_by_importance")
+
+    def test_sort_reminders_by_title_desc(self):
+        from core.reminders import list_reminders
+        result = list_reminders(include_done=False, sort_by="title", ascending=False)
+        titles = [r["title"] for r in result]
+        self.assertEqual(titles, sorted(titles, reverse=True, key=str.lower))
+        print("  PASS test_sort_reminders_by_title_desc")
+
+    def test_sort_notes_by_importance(self):
+        from core.notes import create_note, list_notes
+        create_note("Urgent note", importance="Urgent")
+        create_note("Low note",    importance="Low")
+        result = list_notes(sort_by="importance", ascending=False)
+        imps = [n["importance"] for n in result[:5]]
+        # Urgent should appear before Low when descending
+        if "Urgent" in imps and "Low" in imps:
+            self.assertLess(imps.index("Urgent"), imps.index("Low"))
+        print("  PASS test_sort_notes_by_importance")
+
+    def test_sort_notes_by_title(self):
+        from core.notes import list_notes
+        result = list_notes(sort_by="title", ascending=True)
+        titles = [n["title"] for n in result]
+        self.assertEqual(titles, sorted(titles, key=str.lower))
+        print("  PASS test_sort_notes_by_title")
+
+
+# ── progress states + button text ─────────────────────────────────────────────
+
+class TestVoiceUX(unittest.TestCase):
+
+    def test_start_button_text(self):
+        import inspect
+        import ui.voice_panel as vp
+        src = inspect.getsource(vp.VoicePanel._build)
+        self.assertIn("Press to start speaking", src)
+        print("  PASS test_start_button_text")
+
+    def test_listening_button_text(self):
+        import inspect
+        import ui.voice_panel as vp
+        src = inspect.getsource(vp.VoicePanel._start)
+        self.assertIn("Listening", src)
+        print("  PASS test_listening_button_text")
+
+    def test_processing_button_text(self):
+        import inspect
+        import ui.voice_panel as vp
+        src = inspect.getsource(vp.VoicePanel._stop)
+        self.assertIn("Processing your speech", src)
+        print("  PASS test_processing_button_text")
+
+    def test_progress_bar_present(self):
+        import inspect
+        import ui.voice_panel as vp
+        src = inspect.getsource(vp.VoicePanel._build)
+        self.assertIn("CTkProgressBar", src)
+        print("  PASS test_progress_bar_present")
+
+    def test_progress_stages_in_pipeline(self):
+        import inspect
+        import ui.voice_panel as vp
+        stop_src     = inspect.getsource(vp.VoicePanel._stop)
+        pipeline_src = inspect.getsource(vp.VoicePanel._pipeline)
+        self.assertIn("Transcribing with local Whisper", stop_src)
+        self.assertIn("Claude AI", pipeline_src)
+        print("  PASS test_progress_stages_in_pipeline")
+
+    def test_rerecord_button_restarts(self):
+        import inspect
+        import ui.voice_panel as vp
+        src = inspect.getsource(vp.VoicePanel._re_record)
+        self.assertIn("_start", src)
+        print("  PASS test_rerecord_button_restarts")
+
+    def test_in_app_popup_exists(self):
+        from ui.reminder_popup import ReminderPopup
+        import inspect
+        src = inspect.getsource(ReminderPopup)
+        self.assertIn("Mark Done", src)
+        self.assertIn("Snooze", src)
+        self.assertIn("Dismiss", src)
+        print("  PASS test_in_app_popup_exists")
+
+    def test_missed_badge_method_exists(self):
+        from ui.app import App
+        self.assertTrue(hasattr(App, "update_missed_badge"))
+        self.assertTrue(hasattr(App, "show_reminder_popup"))
+        print("  PASS test_missed_badge_method_exists")
+
+    def test_resizable_pane_in_notes(self):
+        import inspect
+        import ui.notes_view as nv
+        src = inspect.getsource(nv.NotesView._build)
+        self.assertIn("PanedWindow", src)
+        print("  PASS test_resizable_pane_in_notes")
+
+    def test_resizable_pane_in_reminders(self):
+        import inspect
+        import ui.reminders_view as rv
+        src = inspect.getsource(rv.RemindersView._build)
+        self.assertIn("PanedWindow", src)
+        print("  PASS test_resizable_pane_in_reminders")
+
+    def test_sorting_controls_in_reminders(self):
+        import inspect
+        import ui.reminders_view as rv
+        src = inspect.getsource(rv.RemindersView._build)
+        self.assertIn("Sort:", src)
+        self.assertIn("_on_sort_change", src)
+        print("  PASS test_sorting_controls_in_reminders")
+
+    def test_sorting_controls_in_notes(self):
+        import inspect
+        import ui.notes_view as nv
+        src = inspect.getsource(nv.NotesView._build)
+        self.assertIn("Sort:", src)
+        self.assertIn("_on_sort_change", src)
+        print("  PASS test_sorting_controls_in_notes")
+
+    def test_structured_result_shows_type(self):
+        import inspect
+        import ui.voice_panel as vp
+        src = inspect.getsource(vp.VoicePanel._show_result)
+        self.assertIn("Type:", src)
+        self.assertIn("confidence", src)
+        self.assertIn("importance", src.lower())
+        print("  PASS test_structured_result_shows_type")
+
+
 # ── runner ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -682,10 +891,13 @@ if __name__ == "__main__":
         TestRuleBasedFallback,
         TestLocalLLMService,
         TestVoicePipeline,
+        TestImportanceField,
+        TestSorting,
+        TestVoiceUX,
     ]:
         suite.addTests(loader.loadTestsFromTestCase(cls))
 
-    runner = unittest.TextTestRunner(verbosity=0, stream=open(os.devnull, "w"))
+    runner = unittest.TextTestRunner(verbosity=0, stream=open(os.devnull, "w", encoding="utf-8"))
     result = runner.run(suite)
 
     for test, tb in result.failures + result.errors:
