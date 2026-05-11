@@ -237,16 +237,76 @@ class TestRuleBasedFallback(unittest.TestCase):
         self.assertEqual(result["intent"], "unknown")
         print("  PASS test_unknown_intent")
 
-    def test_ollama_unavailable_falls_back(self):
-        """When Ollama is down the rule-based parser is used — no crash."""
+    def test_claude_unavailable_falls_back(self):
+        """When Claude API key is absent the rule-based parser is used — no crash."""
         from ui.voice_panel import _rule_based_intent
         result = _rule_based_intent("Create a reminder for standup tomorrow at 9am")
         self.assertIn(result["intent"], ("create_reminder", "unknown"))
         self.assertTrue(result["requires_confirmation"])
-        print("  PASS test_ollama_unavailable_falls_back")
+        print("  PASS test_claude_unavailable_falls_back")
 
 
-# ── local LLM service (Qwen/Ollama) ──────────────────────────────────────────
+# ── Claude is the default parser ─────────────────────────────────────────────
+
+class TestClaudeIsDefault(unittest.TestCase):
+
+    def test_claude_parser_is_default(self):
+        """voice_panel must use claude_parse_intent, not qwen, as primary parser."""
+        import inspect
+        import ui.voice_panel as vp
+        src = inspect.getsource(vp.VoicePanel._pipeline)
+        self.assertIn("claude_parse_intent", src)
+        self.assertNotIn("qwen_parse_intent", src)
+        print("  PASS test_claude_parser_is_default")
+
+    def test_ollama_not_required(self):
+        """Importing voice_panel must succeed regardless of Ollama state."""
+        import ui.voice_panel  # should not raise even without Ollama
+        print("  PASS test_ollama_not_required")
+
+    def test_missing_api_key_raises(self):
+        """intent_parser.parse_intent raises RuntimeError with clear message when key absent."""
+        old_key = os.environ.pop("ANTHROPIC_API_KEY", None)
+        try:
+            from services.intent_parser import parse_intent
+            with self.assertRaises(RuntimeError) as ctx:
+                parse_intent("some text")
+            self.assertIn("ANTHROPIC_API_KEY", str(ctx.exception))
+        finally:
+            if old_key:
+                os.environ["ANTHROPIC_API_KEY"] = old_key
+        print("  PASS test_missing_api_key_raises")
+
+    def test_transcription_forwarded_to_claude(self):
+        """parse_intent receives the transcription text and returns a dict."""
+        os.environ["ANTHROPIC_API_KEY"] = "test-key"
+        _fake_anthropic.Anthropic.return_value.messages.create.return_value = MagicMock(
+            content=[MagicMock(text=_GOOD_JSON)]
+        )
+        from services.intent_parser import parse_intent
+        result = parse_intent("Remind me to call tomorrow")
+        self.assertIsInstance(result, dict)
+        self.assertIn("intent", result)
+        print("  PASS test_transcription_forwarded_to_claude")
+
+    def test_high_confidence_reminder_autosaves(self):
+        """confidence >= 0.85 meets CONFIDENCE_AUTO threshold for auto-save."""
+        from ui.voice_panel import CONFIDENCE_AUTO
+        action = _reminder_action("Team sync", "tomorrow at 9am")
+        self.assertGreaterEqual(action["confidence"], CONFIDENCE_AUTO)
+        self.assertFalse(action["requires_confirmation"])
+        print("  PASS test_high_confidence_reminder_autosaves")
+
+    def test_low_confidence_requires_confirmation(self):
+        """confidence < 0.60 is below CONFIDENCE_REVIEW — must not auto-save."""
+        from ui.voice_panel import CONFIDENCE_REVIEW
+        action = _reminder_action("vague command", "sometime")
+        action["confidence"] = 0.45
+        self.assertLess(action["confidence"], CONFIDENCE_REVIEW)
+        print("  PASS test_low_confidence_requires_confirmation")
+
+
+# ── local LLM service (Qwen/Ollama) — optional experimental ──────────────────
 
 _GOOD_REMINDER_JSON = json.dumps({
     "intent": "create_reminder",
@@ -562,8 +622,9 @@ if __name__ == "__main__":
         TestLocalWhisperService,
         TestSpeechToText,
         TestIntentParser,
-        TestLocalLLMService,
+        TestClaudeIsDefault,
         TestRuleBasedFallback,
+        TestLocalLLMService,
         TestVoicePipeline,
     ]:
         suite.addTests(loader.loadTestsFromTestCase(cls))

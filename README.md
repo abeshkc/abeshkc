@@ -15,7 +15,7 @@ All data lives in SQLite at `~/.noteremind/data.db` — no cloud, no accounts.
 - Deletion confirmation dialog for notes and reminders (prevents accidental loss)
 - Recurring reminders — daily, weekly, monthly, yearly (with custom interval); marking done auto-schedules the next occurrence
 - Done tab — completed reminders move to a separate tab with `completed_at` timestamp; data is never deleted
-- **Voice tab** — 100% local pipeline: faster-whisper transcribes speech on-device, Qwen via Ollama parses intent, no API keys required
+- **Voice tab** — local Whisper transcribes speech on-device; Claude API parses intent into structured actions
 
 ---
 
@@ -37,32 +37,23 @@ python main.py
 
 ### API Keys
 
-**No API keys required.** The full voice pipeline runs locally:
+Add your Anthropic API key to `.env`:
 
 ```
-Microphone → Local Whisper → Local Qwen (Ollama) → SQLite database
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
-No audio or text is sent to any cloud service.
+Voice pipeline:
 
-### Ollama setup (required for Voice tab AI parsing)
-
-```powershell
-# 1. Download and install Ollama from https://ollama.com
-# 2. Pull the default model (~4 GB)
-ollama pull qwen2.5:7b
-
-# For low-RAM laptops (~2 GB):
-ollama pull qwen2.5:3b
-
-# 3. Ollama starts automatically on Windows.
-#    If needed, start it manually:
-ollama serve
+```
+Microphone → Local Whisper (on-device) → Claude API (cloud) → SQLite database
 ```
 
-Set `OLLAMA_MODEL=qwen2.5:3b` in `.env` if you have less than 8 GB RAM.
+Audio never leaves your machine. The transcription text is sent to Claude for intent parsing.
 
-If Ollama is not running, the Voice tab falls back to a simple rule-based parser automatically — the app never crashes.
+If `ANTHROPIC_API_KEY` is missing, the Voice tab shows a clear error and falls back to a limited rule-based parser automatically.
+
+Ollama and Qwen are **not required**. The app starts and runs without them.
 
 ### Voice tab — first run
 

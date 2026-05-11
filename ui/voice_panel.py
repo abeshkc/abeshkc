@@ -1,3 +1,4 @@
+import os
 import re
 import tkinter.messagebox as mb
 import customtkinter as ctk
@@ -5,7 +6,7 @@ import threading
 
 from services.audio_recorder import AudioRecorder, AUDIO_AVAILABLE
 from services.speech_to_text import transcribe_audio
-from services.local_llm_service import parse_intent as qwen_parse_intent
+from services.intent_parser import parse_intent as claude_parse_intent
 from services.local_whisper_service import current_model_size
 from core.parser import parse_datetime
 from core.notes import create_note
@@ -27,25 +28,36 @@ class VoicePanel(ctk.CTkFrame):
             self, text="Voice Input", font=ctk.CTkFont(size=15, weight="bold")
         ).pack(anchor="w", padx=16, pady=(16, 6))
 
-        # Privacy notice — fully local
-        notice = ctk.CTkFrame(self, fg_color="#1a2a1a", corner_radius=6)
+        # Info notice — Whisper local, Claude cloud
+        notice = ctk.CTkFrame(self, fg_color="#1a1e2a", corner_radius=6)
         notice.pack(fill="x", padx=16, pady=(0, 12))
+        has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        if has_key:
+            notice_text = (
+                "Speech → local Whisper (on-device) → Claude API (cloud) → app.\n"
+                "Audio never leaves your computer; transcription is sent to Claude for parsing."
+            )
+            notice_color = "#5d8dbb"
+        else:
+            notice_text = (
+                "Claude API key missing. Add ANTHROPIC_API_KEY to your .env file.\n"
+                "Without it, voice commands fall back to the rule-based parser (limited)."
+            )
+            notice_color = "#e07b3c"
         ctk.CTkLabel(
             notice,
-            text="100% local — no API keys required.\n"
-                 "Speech → local Whisper → local Qwen (Ollama) → app.  Nothing leaves your computer.",
-            text_color="#5dbb5d",
+            text=notice_text,
+            text_color=notice_color,
             font=ctk.CTkFont(size=11),
             justify="left",
         ).pack(padx=12, pady=8, anchor="w")
 
         # Model info row
         model_row = ctk.CTkFrame(self, fg_color="transparent")
-        model_row.pack(fill="x", padx=16, pady=(0, 8))
+        model_row.pack(fill="x", padx=16, pady=(0, 4))
         ctk.CTkLabel(
             model_row,
-            text=f"Whisper model: {current_model_size()}  "
-                 f"(set WHISPER_MODEL_SIZE in .env to change)",
+            text=f"STT: local Whisper ({current_model_size()})   Parser: Claude API",
             text_color="gray",
             font=ctk.CTkFont(size=11),
         ).pack(side="left")
@@ -133,20 +145,26 @@ class VoicePanel(ctk.CTkFrame):
             return
 
         self._ui(lambda: self._set_preview(text))
-        self._ui(lambda: self._set_status("Parsing with Qwen (local)…", "gray"))
 
-        # 2. Qwen via Ollama → rule-based fallback if Ollama unavailable
-        try:
-            action = qwen_parse_intent(text)
-        except RuntimeError as exc:
-            err = str(exc)
-            self._ui(lambda: self._set_status(err, "#e67e22"))
-            action = _rule_based_intent(text)
-        except Exception as exc:
+        # 2. Claude API → rule-based fallback if key missing or request fails
+        if not os.environ.get("ANTHROPIC_API_KEY"):
             self._ui(lambda: self._set_status(
-                "Qwen error — using rule-based parser.", "#e67e22"
+                "Claude API key missing. Add ANTHROPIC_API_KEY to .env.", "#e74c3c"
             ))
             action = _rule_based_intent(text)
+        else:
+            self._ui(lambda: self._set_status("Parsing with Claude API…", "gray"))
+            try:
+                action = claude_parse_intent(text)
+            except RuntimeError as exc:
+                err = str(exc)
+                self._ui(lambda e=err: self._set_status(e, "#e74c3c"))
+                action = _rule_based_intent(text)
+            except Exception as exc:
+                self._ui(lambda: self._set_status(
+                    "Claude API error — using rule-based parser.", "#e67e22"
+                ))
+                action = _rule_based_intent(text)
 
         self._ui(lambda: self._dispatch(text, action))
 
