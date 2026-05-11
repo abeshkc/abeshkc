@@ -1,3 +1,5 @@
+import os
+import re
 import tkinter.messagebox as mb
 import customtkinter as ctk
 import threading
@@ -5,6 +7,7 @@ import threading
 from services.audio_recorder import AudioRecorder, AUDIO_AVAILABLE
 from services.speech_to_text import transcribe_audio
 from services.intent_parser import parse_intent
+from services.local_whisper_service import current_model_size
 from core.parser import parse_datetime
 from core.notes import create_note
 from core.reminders import create_reminder
@@ -17,7 +20,7 @@ class VoicePanel(ctk.CTkFrame):
     def __init__(self, master, on_action=None):
         super().__init__(master, fg_color="transparent")
         self._recorder = AudioRecorder()
-        self._on_action = on_action  # called after any successful action
+        self._on_action = on_action
         self._build()
 
     def _build(self):
@@ -25,15 +28,28 @@ class VoicePanel(ctk.CTkFrame):
             self, text="Voice Input", font=ctk.CTkFont(size=15, weight="bold")
         ).pack(anchor="w", padx=16, pady=(16, 6))
 
-        # Privacy notice
-        notice = ctk.CTkFrame(self, fg_color="#2a2a18", corner_radius=6)
+        # Privacy notice — local transcription
+        notice = ctk.CTkFrame(self, fg_color="#1a2a1a", corner_radius=6)
         notice.pack(fill="x", padx=16, pady=(0, 12))
         ctk.CTkLabel(
             notice,
-            text="Audio is sent to OpenAI Whisper.  Transcribed text is sent to Claude API.",
-            text_color="#ccaa00",
+            text="Transcription is LOCAL — audio never leaves your computer.\n"
+                 "Transcribed text is sent to Claude API only if ANTHROPIC_API_KEY is set.",
+            text_color="#5dbb5d",
             font=ctk.CTkFont(size=11),
-        ).pack(padx=12, pady=8)
+            justify="left",
+        ).pack(padx=12, pady=8, anchor="w")
+
+        # Model info row
+        model_row = ctk.CTkFrame(self, fg_color="transparent")
+        model_row.pack(fill="x", padx=16, pady=(0, 8))
+        ctk.CTkLabel(
+            model_row,
+            text=f"Whisper model: {current_model_size()}  "
+                 f"(set WHISPER_MODEL_SIZE in .env to change)",
+            text_color="gray",
+            font=ctk.CTkFont(size=11),
+        ).pack(side="left")
 
         # Mic button + status
         btn_row = ctk.CTkFrame(self, fg_color="transparent")
@@ -97,14 +113,14 @@ class VoicePanel(ctk.CTkFrame):
             fg_color=["#3B8ED0", "#1F6AA5"],
             hover_color=["#36719F", "#144870"],
         )
-        self._set_status("Transcribing…", "gray")
+        self._set_status(f"Transcribing locally (whisper/{current_model_size()})…", "gray")
         audio_path = self._recorder.stop()
         threading.Thread(target=self._pipeline, args=(audio_path,), daemon=True).start()
 
     # ── pipeline ─────────────────────────────────────────────────────────
 
     def _pipeline(self, audio_path: str):
-        # 1. Whisper
+        # 1. Local Whisper
         try:
             text = transcribe_audio(audio_path)
         except Exception as exc:
@@ -118,14 +134,22 @@ class VoicePanel(ctk.CTkFrame):
             return
 
         self._ui(lambda: self._set_preview(text))
-        self._ui(lambda: self._set_status("Parsing intent with Claude…", "gray"))
 
-        # 2. Claude intent
-        try:
-            action = parse_intent(text)
-        except Exception as exc:
-            self._ui(lambda: self._set_status(f"Claude error: {exc}", "#e74c3c"))
-            return
+        # 2. Intent parsing — Claude if key available, rule-based fallback otherwise
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            self._ui(lambda: self._set_status("Parsing intent with Claude…", "gray"))
+            try:
+                action = parse_intent(text)
+            except Exception as exc:
+                self._ui(lambda: self._set_status(
+                    f"Claude error — falling back to rule-based parser.", "#e67e22"
+                ))
+                action = _rule_based_intent(text)
+        else:
+            self._ui(lambda: self._set_status(
+                "No ANTHROPIC_API_KEY — using rule-based parser.", "#e67e22"
+            ))
+            action = _rule_based_intent(text)
 
         self._ui(lambda: self._dispatch(text, action))
 
@@ -137,17 +161,19 @@ class VoicePanel(ctk.CTkFrame):
 
         if intent == "unknown" or confidence < CONFIDENCE_REVIEW:
             self._set_status(
-                f"Low confidence ({confidence:.0%}) — please act manually.",
-                "#e67e22",
+                f"Low confidence ({confidence:.0%}) — please act manually.", "#e67e22"
             )
             self._set_result(
-                f'Heard: "{transcription}"\nIntent: {intent} ({confidence:.0%}) — too uncertain to act.'
+                f'Heard: "{transcription}"\n'
+                f'Intent: {intent} ({confidence:.0%}) — too uncertain to act automatically.'
             )
             return
 
         if intent == "search":
             query = fields.get("search_query") or transcription
-            self._set_result(f'Search: "{query}"\nSwitch to the Notes tab and type that in the search box.')
+            self._set_result(
+                f'Search: "{query}"\nSwitch to the Notes tab and type that in the search box.'
+            )
             self._set_status("Voice search — use Notes tab.", "#e67e22")
             return
 
@@ -236,6 +262,54 @@ class VoicePanel(ctk.CTkFrame):
 
     def _set_result(self, text: str):
         self._result_lbl.configure(text=text)
+
+
+# ── rule-based fallback intent parser ────────────────────────────────────────
+
+def _rule_based_intent(text: str) -> dict:
+    """Simple keyword-based parser used when Claude API is not available."""
+    t = text.lower().strip()
+
+    if any(w in t for w in ["remind", "reminder", "appointment", "schedule", "alert"]):
+        intent = "create_reminder"
+    elif any(w in t for w in ["note", "write", "jot", "record", "meeting note", "add a note"]):
+        intent = "create_meeting_note"
+    elif any(w in t for w in ["find", "search", "look for", "show me"]):
+        intent = "search"
+    else:
+        intent = "unknown"
+
+    title = ""
+    patterns = [
+        r"remind(?:er)?\s+(?:for|about|me(?:\s+to)?)\s+(.+?)(?:\s+(?:tomorrow|today|at\s+\d|next|in\s+\d)|[.,]|$)",
+        r"(?:note|write(?:\s+down)?|jot)[:\s]+(.+?)(?:\s+(?:before|tomorrow|today|at\s+\d)|[.,]|$)",
+        r"(?:schedule|appointment)\s+(?:for\s+)?(.+?)(?:\s+(?:tomorrow|today|at\s+\d|next|in\s+\d)|[.,]|$)",
+    ]
+    for pat in patterns:
+        m = re.search(pat, t)
+        if m:
+            title = m.group(1).strip().title()
+            break
+    if not title:
+        title = _auto_title(text)
+
+    return {
+        "intent": intent,
+        "confidence": 0.70,
+        "requires_confirmation": True,
+        "fields": {
+            "title": title,
+            "description": text,
+            "datetime": text,
+            "date": "", "time": "",
+            "participants": [], "tags": [],
+            "priority": "normal",
+            "recurrence": "none",
+            "search_query": text if intent == "search" else "",
+        },
+        "action_summary": f"[Rule-based] {intent}: {title}",
+        "missing_fields": [],
+    }
 
 
 def _auto_title(text: str, max_words: int = 6) -> str:

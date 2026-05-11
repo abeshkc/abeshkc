@@ -15,7 +15,7 @@ All data lives in SQLite at `~/.noteremind/data.db` — no cloud, no accounts.
 - Deletion confirmation dialog for notes and reminders (prevents accidental loss)
 - Recurring reminders — daily, weekly, monthly, yearly (with custom interval); marking done auto-schedules the next occurrence
 - Done tab — completed reminders move to a separate tab with `completed_at` timestamp; data is never deleted
-- **Voice tab** — speak a command, Whisper transcribes it, Claude parses intent and autonomously creates reminders or meeting notes
+- **Voice tab** — speak a command, local faster-whisper transcribes it on-device, Claude (optional) parses intent and creates reminders or notes automatically
 
 ---
 
@@ -39,10 +39,24 @@ python main.py
 
 | Key | Used for | Required? |
 |---|---|---|
-| `OPENAI_API_KEY` | Whisper speech-to-text | Only for Voice tab |
-| `ANTHROPIC_API_KEY` | Claude intent parsing | Only for Voice tab |
+| `ANTHROPIC_API_KEY` | Claude intent parsing | Optional — falls back to rule-based parser |
 
-The app runs fully without both keys — they are only needed when you use the **Voice** tab.
+No `OPENAI_API_KEY` needed. Speech transcription runs **locally** via faster-whisper.
+
+### Voice tab — first run
+
+The first time you click **Start Recording**, faster-whisper downloads the selected model (~150 MB for `base`) from Hugging Face. This is a one-time download. Subsequent runs use the cached model.
+
+**Model size guide:**
+
+| Size | RAM | Speed | Accuracy |
+|---|---|---|---|
+| `tiny` | ~390 MB | fastest | basic |
+| `base` | ~550 MB | fast | good (default) |
+| `small` | ~1.2 GB | moderate | better |
+| `medium` | ~3 GB | slow | best |
+
+Set `WHISPER_MODEL_SIZE=small` in `.env` for better accuracy on accented or fast speech.
 
 ### Microphone permissions
 
