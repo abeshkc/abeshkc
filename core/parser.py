@@ -50,18 +50,18 @@ def _extract_time(text: str) -> tuple[int, int] | None:
     m = re.search(r'\b(\d{1,2}):(\d{2})\s*(am|pm)?\b', text)
     if m:
         h, minute, suffix = int(m.group(1)), int(m.group(2)), m.group(3)
-        if suffix == "pm" and h != 12:
+        if suffix == "pm" and h < 12:
             h += 12
         elif suffix == "am" and h == 12:
             h = 0
-        return h, minute
+        return min(h, 23), minute
     # bare H am / H pm
     m = re.search(r'\b(\d{1,2})\s*(am|pm)\b', text)
     if m:
         h = int(m.group(1))
-        if m.group(2) == "pm" and h != 12:
+        if m.group(2) == "pm" and h < 12:
             h += 12
         elif m.group(2) == "am" and h == 12:
             h = 0
-        return h, 0
+        return min(h, 23), 0
     return None
