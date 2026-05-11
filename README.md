@@ -13,6 +13,8 @@ All data lives in SQLite at `~/.noteremind/data.db` — no cloud, no accounts.
 - Link reminders to notes
 - Overdue reminders highlighted in red
 - Deletion confirmation dialog for notes and reminders (prevents accidental loss)
+- Recurring reminders — daily, weekly, monthly, yearly (with custom interval); marking done auto-schedules the next occurrence
+- Done tab — completed reminders move to a separate tab with `completed_at` timestamp; data is never deleted
 
 ---
 
@@ -93,8 +95,14 @@ python tests/test_parser.py
 
 ```sql
 notes      (id, title, content, tags, created_at, updated_at)
-reminders  (id, note_id, title, message, due_at, is_done, created_at)
+reminders  (id, note_id, title, message, due_at, is_done, created_at,
+            recurrence_type, recurrence_interval, recurrence_end_date, completed_at)
 ```
+
+`recurrence_type` is one of `none | daily | weekly | monthly | yearly` (default `none`).  
+`recurrence_interval` controls "every N units" (default 1).  
+`completed_at` is set when a reminder is marked done; rows are never hard-deleted.  
+Migration is automatic — existing databases are upgraded on first run via `ALTER TABLE`.
 
 ---
 
