@@ -67,6 +67,8 @@ def _migrate() -> None:
         # importance (phase 3)
         "ALTER TABLE reminders ADD COLUMN importance TEXT NOT NULL DEFAULT 'Normal'",
         "ALTER TABLE notes     ADD COLUMN importance TEXT NOT NULL DEFAULT 'Normal'",
+        # note date + reminder details alias (phase 4)
+        "ALTER TABLE notes ADD COLUMN note_date TEXT",
     ]
     with get_connection() as conn:
         for sql in new_columns:

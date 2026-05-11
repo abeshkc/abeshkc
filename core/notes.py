@@ -13,14 +13,15 @@ def create_note(
     llm_intent: str | None = None,
     llm_confidence: float | None = None,
     importance: str = "Normal",
+    note_date: str = "",
 ) -> int:
     importance = importance if importance in IMPORTANCE_LEVELS else "Normal"
     with get_connection() as conn:
         cur = conn.execute(
             """INSERT INTO notes
                (title, content, tags, source_type, original_transcription,
-                llm_intent, llm_confidence, created_from_voice, importance)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                llm_intent, llm_confidence, created_from_voice, importance, note_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 title.strip(), content, tags.strip(),
                 source_type,
@@ -29,6 +30,7 @@ def create_note(
                 llm_confidence,
                 1 if source_type == "voice" else 0,
                 importance,
+                note_date.strip() if note_date else "",
             ),
         )
         return cur.lastrowid
@@ -43,13 +45,15 @@ def get_note(note_id: int) -> dict | None:
 def update_note(
     note_id: int, title: str, content: str, tags: str,
     importance: str = "Normal",
+    note_date: str = "",
 ) -> None:
     importance = importance if importance in IMPORTANCE_LEVELS else "Normal"
     with get_connection() as conn:
         conn.execute(
-            "UPDATE notes SET title=?, content=?, tags=?, importance=?, "
+            "UPDATE notes SET title=?, content=?, tags=?, importance=?, note_date=?, "
             "updated_at=datetime('now') WHERE id=?",
-            (title.strip(), content, tags.strip(), importance, note_id),
+            (title.strip(), content, tags.strip(), importance,
+             note_date.strip() if note_date else "", note_id),
         )
 
 

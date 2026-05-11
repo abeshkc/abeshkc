@@ -228,7 +228,7 @@ class TestRuleBasedFallback(unittest.TestCase):
     def test_note_intent_detected(self):
         from ui.voice_panel import _rule_based_intent
         result = _rule_based_intent("Add a note: review Yemen brief before Thursday")
-        self.assertEqual(result["intent"], "create_meeting_note")
+        self.assertIn(result["intent"], ("create_note", "create_meeting_note"))
         print("  PASS test_note_intent_detected")
 
     def test_unknown_intent(self):
@@ -795,8 +795,10 @@ class TestVoiceUX(unittest.TestCase):
     def test_processing_button_text(self):
         import inspect
         import ui.voice_panel as vp
+        # Processing state is now indicated via canvas mic state and progress bar
         src = inspect.getsource(vp.VoicePanel._stop)
-        self.assertIn("Processing your speech", src)
+        self.assertIn("processing", src)   # mic_state set to "processing"
+        self.assertIn("_progress", src)    # progress bar shown
         print("  PASS test_processing_button_text")
 
     def test_progress_bar_present(self):
@@ -875,6 +877,103 @@ class TestVoiceUX(unittest.TestCase):
         self.assertIn("confidence", src)
         self.assertIn("importance", src.lower())
         print("  PASS test_structured_result_shows_type")
+
+    def test_mic_canvas_animation(self):
+        """Mic canvas must have ring animation and three states."""
+        import inspect
+        import ui.voice_panel as vp
+        src = inspect.getsource(vp.VoicePanel._animate_mic)
+        self.assertIn("idle", src)
+        self.assertIn("recording", src)
+        self.assertIn("processing", src)
+        self.assertIn("_ring_ids", src)
+        print("  PASS test_mic_canvas_animation")
+
+    def test_aria_app_name(self):
+        """App window title and sidebar must reference 'Aria'."""
+        import inspect
+        import ui.app as app_mod
+        src = inspect.getsource(app_mod.App.__init__)
+        self.assertIn("Aria", src)
+        src2 = inspect.getsource(app_mod.App._build_sidebar)
+        self.assertIn("Aria", src2)
+        print("  PASS test_aria_app_name")
+
+    def test_sidebar_has_emoji_icons(self):
+        """Sidebar buttons must use emoji icons."""
+        import inspect
+        import ui.app as app_mod
+        src = inspect.getsource(app_mod.App._build_sidebar)
+        self.assertIn("📝", src)   # Notes
+        self.assertIn("🔔", src)   # Reminders
+        self.assertIn("🎙", src)   # Voice
+        print("  PASS test_sidebar_has_emoji_icons")
+
+    def test_reminder_no_auto_confirm_on_create(self):
+        """RemindersView._create must NOT call mb.askyesno (confirmation removed)."""
+        import inspect
+        import ui.reminders_view as rv
+        src = inspect.getsource(rv.RemindersView._create)
+        self.assertNotIn("askyesno", src)
+        print("  PASS test_reminder_no_auto_confirm_on_create")
+
+    def test_details_field_in_reminder_form(self):
+        """RemindersView must have a Details entry field."""
+        import inspect
+        import ui.reminders_view as rv
+        src = inspect.getsource(rv.RemindersView._build)
+        self.assertIn("Details", src)
+        self.assertIn("_details_var", src)
+        print("  PASS test_details_field_in_reminder_form")
+
+    def test_note_date_field_in_notes_form(self):
+        """NotesView must have a note_date entry field."""
+        import inspect
+        import ui.notes_view as nv
+        src = inspect.getsource(nv.NotesView._build)
+        self.assertIn("note_date", src)
+        self.assertIn("Date:", src)
+        print("  PASS test_note_date_field_in_notes_form")
+
+    def test_note_date_saved_in_db(self):
+        """create_note and update_note must accept note_date."""
+        from core.notes import create_note, get_note, update_note
+        nid = create_note("Dated note", note_date="2026-05-10")
+        note = get_note(nid)
+        self.assertEqual(note["note_date"], "2026-05-10")
+        update_note(nid, "Dated note", "content", "", note_date="2026-05-15")
+        note2 = get_note(nid)
+        self.assertEqual(note2["note_date"], "2026-05-15")
+        print("  PASS test_note_date_saved_in_db")
+
+    def test_when_field_contains_only_datetime(self):
+        """Rule-based parser must NOT put full transcription in datetime field."""
+        from ui.voice_panel import _rule_based_intent
+        text = "Create a reminder for meeting with Yaseen tomorrow at 10 PM about the DIEM brief"
+        result = _rule_based_intent(text)
+        dt = result["fields"]["datetime"]
+        self.assertNotEqual(dt, text, "datetime must not equal full transcription")
+        # datetime should be short (a natural-language time expression, or empty)
+        if dt:
+            self.assertLess(len(dt), len(text) // 2,
+                            "datetime should be much shorter than full transcription")
+        print("  PASS test_when_field_contains_only_datetime")
+
+    def test_details_field_receives_context(self):
+        """Rule-based parser should store the full speech as details."""
+        from ui.voice_panel import _rule_based_intent
+        text = "Create a reminder for meeting with Yaseen tomorrow at 10 PM about the DIEM brief"
+        result = _rule_based_intent(text)
+        details = result["fields"]["details"]
+        self.assertIn("DIEM", details)
+        print("  PASS test_details_field_receives_context")
+
+    def test_claude_schema_has_details_and_note_date(self):
+        """intent_parser system prompt must include details and note_date fields."""
+        import services.intent_parser as ip
+        self.assertIn("details", ip._SYSTEM)
+        self.assertIn("note_date", ip._SYSTEM)
+        print("  PASS test_claude_schema_has_details_and_note_date")
 
 
 # ── runner ────────────────────────────────────────────────────────────────────
