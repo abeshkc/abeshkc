@@ -975,6 +975,85 @@ class TestVoiceUX(unittest.TestCase):
         self.assertIn("note_date", ip._SYSTEM)
         print("  PASS test_claude_schema_has_details_and_note_date")
 
+    def test_nav_buttons_icon_only(self):
+        """Sidebar nav buttons must use icons only — no word labels like Notes/Voice."""
+        import inspect
+        import ui.app as app_mod
+        src = inspect.getsource(app_mod.App._build_sidebar)
+        # Buttons should only have single emoji as text, not full words
+        self.assertNotIn('"📝  Notes"', src)
+        self.assertNotIn('"🔔  Reminders"', src)
+        self.assertNotIn('"🎙  Voice"', src)
+        # Icons should be present
+        self.assertIn('"📝"', src)
+        self.assertIn('"🔔"', src)
+        self.assertIn('"🎙"', src)
+        print("  PASS test_nav_buttons_icon_only")
+
+    def test_tooltips_on_nav_buttons(self):
+        """Each nav button must have a _ToolTip attached."""
+        import inspect
+        import ui.app as app_mod
+        src = inspect.getsource(app_mod.App._build_sidebar)
+        # Should have at least 3 ToolTip calls for the 3 nav buttons
+        count = src.count("_ToolTip(")
+        self.assertGreaterEqual(count, 3)
+        print("  PASS test_tooltips_on_nav_buttons")
+
+    def test_voice_assistant_text_removed(self):
+        """'Voice Assistant' must not appear as a UI label in app.py."""
+        import inspect
+        import ui.app as app_mod
+        src = inspect.getsource(app_mod.App._build_sidebar)
+        self.assertNotIn("Voice Assistant", src)
+        print("  PASS test_voice_assistant_text_removed")
+
+    def test_personal_organizer_text(self):
+        """'Personal Organizer' or 'Your Personal Organizer' must appear."""
+        import inspect
+        import ui.app as app_mod
+        import ui.voice_panel as vp
+        app_src = inspect.getsource(app_mod.App)
+        vp_src  = inspect.getsource(vp.VoicePanel._build)
+        self.assertTrue(
+            "Personal Organizer" in app_src or "Personal Organizer" in vp_src,
+            "Personal Organizer not found in app or voice panel"
+        )
+        print("  PASS test_personal_organizer_text")
+
+    def test_aria_icon_changed(self):
+        """Musical note (U+1F3B5) must be replaced with spark icon (U+2726)."""
+        import pathlib
+        import ui.app as app_mod
+        import ui.voice_panel as vp
+        # Read full file text in UTF-8 so Unicode chars are preserved
+        app_src = pathlib.Path(app_mod.__file__).read_text(encoding="utf-8")
+        vp_src  = pathlib.Path(vp.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("\U0001f3b5", app_src, "Musical note still in app.py")
+        self.assertNotIn("\U0001f3b5", vp_src,  "Musical note still in voice_panel.py")
+        self.assertIn("✦", app_src,  "Spark icon not found in app.py")
+        self.assertIn("✦", vp_src,   "Spark icon not found in voice_panel.py")
+        print("  PASS test_aria_icon_changed")
+
+    def test_badge_uses_overlay(self):
+        """Missed-reminder badge must use place() overlay, not button text."""
+        import inspect
+        import ui.app as app_mod
+        src = inspect.getsource(app_mod.App.update_missed_badge)
+        self.assertIn(".place(", src)
+        self.assertNotIn("configure(text=", src.split("update_missed_badge")[0])
+        print("  PASS test_badge_uses_overlay")
+
+    def test_recording_workflow_intact(self):
+        """_start and _stop must still set mic_state correctly."""
+        import inspect
+        import ui.voice_panel as vp
+        start_src = inspect.getsource(vp.VoicePanel._start)
+        stop_src  = inspect.getsource(vp.VoicePanel._stop)
+        self.assertIn("recording", start_src)
+        self.assertIn("processing", stop_src)
+        print("  PASS test_recording_workflow_intact")
+
 
 # ── runner ────────────────────────────────────────────────────────────────────
 
@@ -1001,7 +1080,8 @@ if __name__ == "__main__":
 
     for test, tb in result.failures + result.errors:
         print(f"  FAIL {test}")
-        print(tb)
+        # encode to ASCII with replacement so Windows cp1252 stdout doesn't crash
+        print(tb.encode("ascii", "replace").decode("ascii"))
 
     if not result.failures and not result.errors:
         print("All voice pipeline tests passed.")

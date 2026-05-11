@@ -93,11 +93,12 @@ class VoicePanel(ctk.CTkFrame):
         hdr = ctk.CTkFrame(self, fg_color="transparent")
         hdr.pack(fill="x", padx=20, pady=(20, 2))
         ctk.CTkLabel(
-            hdr, text="🎵  Aria",
+            hdr, text="✦  Aria",
             font=ctk.CTkFont(size=26, weight="bold"),
+            text_color="#3B8ED0",
         ).pack(anchor="w")
         ctk.CTkLabel(
-            hdr, text="Say it, I'll sort it",
+            hdr, text="Your Personal Organizer",
             text_color="#5d8dbb", font=ctk.CTkFont(size=14),
         ).pack(anchor="w", pady=(2, 0))
         ctk.CTkLabel(

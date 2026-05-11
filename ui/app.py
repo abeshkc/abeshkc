@@ -1,16 +1,19 @@
+import tkinter as tk
 import customtkinter as ctk
 from ui.notes_view import NotesView
 from ui.reminders_view import RemindersView
-from ui.voice_panel import VoicePanel
+from ui.voice_panel import VoicePanel, _ToolTip
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
+
+_ARIA_ICON = "✦"   # four-pointed spark — "spark of intelligence"
 
 
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Aria — Your Voice Assistant")
+        self.title("Aria — Your Personal Organizer")
         self.geometry("1140x730")
         self.minsize(900, 560)
         self._build_sidebar()
@@ -18,56 +21,98 @@ class App(ctk.CTk):
         self.show_voice()
         self.after(500, self.update_missed_badge)
 
+    # ── sidebar ───────────────────────────────────────────────────────────
+
     def _build_sidebar(self):
-        self.sidebar = ctk.CTkFrame(self, width=176, corner_radius=0)
+        self.sidebar = ctk.CTkFrame(self, width=80, corner_radius=0)
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
 
+        # Logo
         ctk.CTkLabel(
             self.sidebar,
-            text="🎵  Aria",
-            font=ctk.CTkFont(size=18, weight="bold"),
-        ).pack(pady=(24, 4))
+            text=_ARIA_ICON,
+            font=ctk.CTkFont(size=26, weight="bold"),
+            text_color="#3B8ED0",
+        ).pack(pady=(20, 0))
         ctk.CTkLabel(
             self.sidebar,
-            text="Voice Assistant",
+            text="Aria",
+            font=ctk.CTkFont(size=11, weight="bold"),
+        ).pack(pady=(0, 2))
+        ctk.CTkLabel(
+            self.sidebar,
+            text="Organizer",
+            font=ctk.CTkFont(size=9),
             text_color="#5d8dbb",
-            font=ctk.CTkFont(size=12),
-        ).pack(pady=(0, 14))
+        ).pack(pady=(0, 10))
 
-        # Voice — primary
+        ctk.CTkFrame(self.sidebar, height=1, fg_color="#333344").pack(
+            fill="x", padx=10, pady=(0, 8)
+        )
+
+        # Voice — primary, accent colour
         self._btn_voice = ctk.CTkButton(
             self.sidebar,
-            text="🎙  Voice",
+            text="🎙",
             command=self.show_voice,
-            height=48,
-            font=ctk.CTkFont(size=15, weight="bold"),
+            width=54, height=54,
+            font=ctk.CTkFont(size=22),
+            corner_radius=12,
             fg_color="#2563eb",
             hover_color="#1d4ed8",
         )
-        self._btn_voice.pack(padx=12, pady=(0, 6), fill="x")
+        self._btn_voice.pack(padx=10, pady=(0, 6))
+        _ToolTip(self._btn_voice, "Your Personal Organizer")
 
         ctk.CTkFrame(self.sidebar, height=1, fg_color="#333344").pack(
-            fill="x", padx=12, pady=(4, 10)
+            fill="x", padx=10, pady=(0, 8)
         )
 
+        # Notes
         self._btn_notes = ctk.CTkButton(
             self.sidebar,
-            text="📝  Notes",
+            text="📝",
             command=self.show_notes,
-            font=ctk.CTkFont(size=13),
-            height=40,
+            width=54, height=54,
+            font=ctk.CTkFont(size=22),
+            corner_radius=12,
+            fg_color="transparent",
+            hover_color="#2b2b3b",
         )
-        self._btn_notes.pack(padx=12, pady=5, fill="x")
+        self._btn_notes.pack(padx=10, pady=(0, 6))
+        _ToolTip(self._btn_notes, "Notes")
+
+        # Reminders — with badge overlay
+        rem_wrap = ctk.CTkFrame(self.sidebar, fg_color="transparent", width=54, height=54)
+        rem_wrap.pack(padx=10, pady=(0, 6))
+        rem_wrap.pack_propagate(False)
 
         self._btn_reminders = ctk.CTkButton(
-            self.sidebar,
-            text="🔔  Reminders",
+            rem_wrap,
+            text="🔔",
             command=self.show_reminders,
-            font=ctk.CTkFont(size=13),
-            height=40,
+            width=54, height=54,
+            font=ctk.CTkFont(size=22),
+            corner_radius=12,
+            fg_color="transparent",
+            hover_color="#2b2b3b",
         )
-        self._btn_reminders.pack(padx=12, pady=5, fill="x")
+        self._btn_reminders.place(x=0, y=0)
+        _ToolTip(self._btn_reminders, "Reminders")
+
+        # Badge label (hidden until there are missed reminders)
+        self._badge_lbl = ctk.CTkLabel(
+            rem_wrap,
+            text="",
+            fg_color="#e74c3c",
+            text_color="white",
+            width=18, height=18,
+            corner_radius=9,
+            font=ctk.CTkFont(size=9, weight="bold"),
+        )
+
+    # ── content ───────────────────────────────────────────────────────────
 
     def _build_content(self):
         self.content = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
@@ -120,9 +165,10 @@ class App(ctk.CTk):
         except Exception:
             missed = 0
         if missed > 0:
-            self._btn_reminders.configure(text=f"🔔  Reminders  🔴{missed}")
+            self._badge_lbl.configure(text=str(min(missed, 99)))
+            self._badge_lbl.place(x=36, y=2)   # top-right of 54px button
         else:
-            self._btn_reminders.configure(text="🔔  Reminders")
+            self._badge_lbl.place_forget()
 
     # ── in-app reminder popup ─────────────────────────────────────────────
 
