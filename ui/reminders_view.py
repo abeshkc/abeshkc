@@ -175,6 +175,23 @@ class RemindersView(ctk.CTkFrame):
         except ValueError:
             interval = 1
 
+        recur = self._recur_var.get()
+        recur_line = (
+            f"\nRepeat:  every {interval} {recur}"
+            if recur != "none" else ""
+        )
+
+        confirmed = mb.askyesno(
+            "Confirm Reminder",
+            f"Create this reminder?\n\n"
+            f"  Title:  {title}\n"
+            f"  Due:    {due.strftime('%A, %b %d %Y at %H:%M')}"
+            f"{recur_line}\n\n"
+            f"Does this look right?",
+        )
+        if not confirmed:
+            return
+
         note_id: int | None = None
         sel = self._note_var.get()
         if sel != "None":
@@ -182,7 +199,7 @@ class RemindersView(ctk.CTkFrame):
 
         create_reminder(
             title, due, note_id=note_id,
-            recurrence_type=self._recur_var.get(),
+            recurrence_type=recur,
             recurrence_interval=interval,
         )
         self._title_var.set("")
