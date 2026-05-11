@@ -19,10 +19,24 @@ class AudioRecorder:
         self._recording = False
         self._thread: threading.Thread | None = None
         self._tmp_path: str | None = None
+        self._last_chunk = None  # updated on each read; used for amplitude
 
     @property
     def is_recording(self) -> bool:
         return self._recording
+
+    @property
+    def current_level(self) -> float:
+        """RMS amplitude of the latest audio chunk, normalised 0.0–1.0."""
+        chunk = self._last_chunk
+        if chunk is None or not AUDIO_AVAILABLE:
+            return 0.0
+        try:
+            import numpy as np
+            rms = float(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
+            return min(rms / 6000.0, 1.0)
+        except Exception:
+            return 0.0
 
     def start(self) -> None:
         if not AUDIO_AVAILABLE:
@@ -58,7 +72,9 @@ class AudioRecorder:
         with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16") as stream:
             while self._recording:
                 chunk, _ = stream.read(1024)
-                self._frames.append(chunk.copy())
+                c = chunk.copy()
+                self._frames.append(c)
+                self._last_chunk = c
 
     def _save(self) -> str:
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)

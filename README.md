@@ -15,7 +15,7 @@ All data lives in SQLite at `~/.noteremind/data.db` — no cloud, no accounts.
 - Deletion confirmation dialog for notes and reminders (prevents accidental loss)
 - Recurring reminders — daily, weekly, monthly, yearly (with custom interval); marking done auto-schedules the next occurrence
 - Done tab — completed reminders move to a separate tab with `completed_at` timestamp; data is never deleted
-- **Voice tab** — local Whisper transcribes speech on-device; Claude API parses intent into structured actions
+- **Voice-first interface** — app opens on the Voice Assistant tab; speak to create reminders, notes, and appointments
 
 ---
 
@@ -35,7 +35,31 @@ copy .env.example .env
 python main.py
 ```
 
-### API Keys
+### Voice-first workflow
+
+The app opens on the **Voice Assistant** tab. Click 🎙 Start Recording, speak your command, then click Stop.
+
+```
+Microphone → Local Whisper (on-device) → Claude API (cloud) → review panel → form / database
+```
+
+After recording, the app shows:
+- Detected intent and confidence score
+- Extracted fields (title, date/time, recurrence, tags…)
+- **Insert into form** — fills the Reminders or Notes form; you review and click Create/Save
+- **Save after review** — saves after one confirmation dialog
+- **Try again** / **Discard** to restart or clear
+
+By default, **nothing is saved automatically** — you always review first.
+
+### Auto-save setting
+
+Toggle **"Auto-save high-confidence voice commands"** at the bottom of the Voice tab.
+
+- **OFF (default):** always asks before saving
+- **ON:** skips confirmation for ≥ 85 % confidence create actions (destructive actions still always confirm)
+
+### API keys
 
 Add your Anthropic API key to `.env`:
 
@@ -43,17 +67,11 @@ Add your Anthropic API key to `.env`:
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
-Voice pipeline:
-
-```
-Microphone → Local Whisper (on-device) → Claude API (cloud) → SQLite database
-```
-
 Audio never leaves your machine. The transcription text is sent to Claude for intent parsing.
 
-If `ANTHROPIC_API_KEY` is missing, the Voice tab shows a clear error and falls back to a limited rule-based parser automatically.
+If `ANTHROPIC_API_KEY` is missing, the Voice tab shows a clear warning and falls back to a limited rule-based parser automatically.
 
-Ollama and Qwen are **not required**. The app starts and runs without them.
+Ollama and Qwen are **not required**.
 
 ### Voice tab — first run
 

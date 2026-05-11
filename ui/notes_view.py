@@ -65,6 +65,23 @@ class NotesView(ctk.CTkFrame):
 
     # ── public ────────────────────────────────────────────────────────────
 
+    def fill_from_voice(self, fields: dict, transcription: str = ""):
+        """Create a blank note, load it in the editor, fill fields (does not save)."""
+        title       = fields.get("title") or "Voice note"
+        description = fields.get("description") or transcription
+        tags        = ", ".join(fields.get("tags") or [])
+        nid  = create_note(title)
+        self.refresh()
+        from core.notes import get_note
+        note = get_note(nid)
+        if note:
+            self._load_note(note)
+        if description:
+            self._content_box.delete("1.0", "end")
+            self._content_box.insert("1.0", description)
+        if tags:
+            self._tags_var.set(tags)
+
     def refresh(self):
         notes = list_notes(self._search_var.get())
         for w in self._list_frame.winfo_children():

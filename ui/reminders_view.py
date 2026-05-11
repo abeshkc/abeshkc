@@ -80,6 +80,22 @@ class RemindersView(ctk.CTkFrame):
 
     # ── public ────────────────────────────────────────────────────────────
 
+    def fill_from_voice(self, fields: dict):
+        """Pre-fill the create form from a voice-parsed action (does not save)."""
+        title = fields.get("title", "").strip()
+        dt_str = (
+            fields.get("datetime")
+            or f"{fields.get('date', '')} {fields.get('time', '')}".strip()
+        )
+        recur = fields.get("recurrence", "none")
+        if title:
+            self._title_var.set(title)
+        if dt_str:
+            self._when_var.set(dt_str)
+        if recur and recur in list(RECURRENCE_TYPES):
+            self._recur_var.set(recur)
+        self._status("Filled from voice — review and click Create Reminder.", "#5d8dbb")
+
     def refresh(self):
         self._notes = list_notes()
         note_options = ["None"] + [f"{n['id']}: {n['title']}" for n in self._notes]

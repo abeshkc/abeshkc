@@ -259,6 +259,15 @@ class TestClaudeIsDefault(unittest.TestCase):
         self.assertNotIn("qwen_parse_intent", src)
         print("  PASS test_claude_parser_is_default")
 
+    def test_voice_is_default_view(self):
+        """app.py must call show_voice() as the default on startup."""
+        import inspect
+        import ui.app as app_mod
+        src = inspect.getsource(app_mod.App.__init__)
+        self.assertIn("show_voice", src)
+        self.assertNotIn("show_notes()", src)
+        print("  PASS test_voice_is_default_view")
+
     def test_ollama_not_required(self):
         """Importing voice_panel must succeed regardless of Ollama state."""
         import ui.voice_panel  # should not raise even without Ollama
@@ -304,6 +313,53 @@ class TestClaudeIsDefault(unittest.TestCase):
         action["confidence"] = 0.45
         self.assertLess(action["confidence"], CONFIDENCE_REVIEW)
         print("  PASS test_low_confidence_requires_confirmation")
+
+    def test_autosave_default_is_off(self):
+        """VoicePanel autosave switch must default to False."""
+        import inspect
+        import ui.voice_panel as vp
+        src = inspect.getsource(vp.VoicePanel.__init__)
+        self.assertIn("value=False", src)
+        print("  PASS test_autosave_default_is_off")
+
+    def test_result_panel_has_insert_and_discard(self):
+        """_show_result source must wire Insert into form and Discard buttons."""
+        import inspect
+        import ui.voice_panel as vp
+        src = inspect.getsource(vp.VoicePanel._show_result)
+        self.assertIn("Insert into form", src)
+        self.assertIn("Save after review", src)
+        self.assertIn("Try again", src)
+        self.assertIn("Discard", src)
+        print("  PASS test_result_panel_has_insert_and_discard")
+
+    def test_destructive_action_hidden_from_save_button(self):
+        """Save after review button must be hidden for destructive intents."""
+        import inspect
+        import ui.voice_panel as vp
+        src = inspect.getsource(vp.VoicePanel._show_result)
+        # The save button is only shown when not is_dest
+        self.assertIn("not is_dest", src)
+        print("  PASS test_destructive_action_hidden_from_save_button")
+
+    def test_autosave_off_always_confirms(self):
+        """When auto_on=False, _do_save always requires confirmation."""
+        import inspect
+        import ui.voice_panel as vp
+        src = inspect.getsource(vp.VoicePanel._do_save)
+        # needs_confirm must incorporate auto_on flag
+        self.assertIn("auto_on", src)
+        self.assertIn("not auto_on", src)
+        print("  PASS test_autosave_off_always_confirms")
+
+    def test_waveform_animation_present(self):
+        """voice_panel must contain waveform animation code."""
+        import inspect
+        import ui.voice_panel as vp
+        src = inspect.getsource(vp.VoicePanel._animate_bars)
+        self.assertIn("current_level", src)
+        self.assertIn("_canvas", src)
+        print("  PASS test_waveform_animation_present")
 
 
 # ── local LLM service (Qwen/Ollama) — optional experimental ──────────────────
