@@ -1,8 +1,10 @@
 customtkinter>=5.2.0
 plyer>=2.1.0
 faster-whisper>=1.0.0
-anthropic>=0.28.0
+requests>=2.31.0
 sounddevice>=0.4.6
 scipy>=1.11.0
 numpy>=1.24.0
 python-dotenv>=1.0.0
+# Optional: uncomment to enable Claude cloud parsing as an alternative
+# anthropic>=0.28.0

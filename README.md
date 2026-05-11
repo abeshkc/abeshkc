@@ -15,7 +15,7 @@ All data lives in SQLite at `~/.noteremind/data.db` — no cloud, no accounts.
 - Deletion confirmation dialog for notes and reminders (prevents accidental loss)
 - Recurring reminders — daily, weekly, monthly, yearly (with custom interval); marking done auto-schedules the next occurrence
 - Done tab — completed reminders move to a separate tab with `completed_at` timestamp; data is never deleted
-- **Voice tab** — speak a command, local faster-whisper transcribes it on-device, Claude (optional) parses intent and creates reminders or notes automatically
+- **Voice tab** — 100% local pipeline: faster-whisper transcribes speech on-device, Qwen via Ollama parses intent, no API keys required
 
 ---
 
@@ -37,11 +37,32 @@ python main.py
 
 ### API Keys
 
-| Key | Used for | Required? |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | Claude intent parsing | Optional — falls back to rule-based parser |
+**No API keys required.** The full voice pipeline runs locally:
 
-No `OPENAI_API_KEY` needed. Speech transcription runs **locally** via faster-whisper.
+```
+Microphone → Local Whisper → Local Qwen (Ollama) → SQLite database
+```
+
+No audio or text is sent to any cloud service.
+
+### Ollama setup (required for Voice tab AI parsing)
+
+```powershell
+# 1. Download and install Ollama from https://ollama.com
+# 2. Pull the default model (~4 GB)
+ollama pull qwen2.5:7b
+
+# For low-RAM laptops (~2 GB):
+ollama pull qwen2.5:3b
+
+# 3. Ollama starts automatically on Windows.
+#    If needed, start it manually:
+ollama serve
+```
+
+Set `OLLAMA_MODEL=qwen2.5:3b` in `.env` if you have less than 8 GB RAM.
+
+If Ollama is not running, the Voice tab falls back to a simple rule-based parser automatically — the app never crashes.
 
 ### Voice tab — first run
 

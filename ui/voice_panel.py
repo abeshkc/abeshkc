@@ -1,4 +1,3 @@
-import os
 import re
 import tkinter.messagebox as mb
 import customtkinter as ctk
@@ -6,7 +5,7 @@ import threading
 
 from services.audio_recorder import AudioRecorder, AUDIO_AVAILABLE
 from services.speech_to_text import transcribe_audio
-from services.intent_parser import parse_intent
+from services.local_llm_service import parse_intent as qwen_parse_intent
 from services.local_whisper_service import current_model_size
 from core.parser import parse_datetime
 from core.notes import create_note
@@ -28,13 +27,13 @@ class VoicePanel(ctk.CTkFrame):
             self, text="Voice Input", font=ctk.CTkFont(size=15, weight="bold")
         ).pack(anchor="w", padx=16, pady=(16, 6))
 
-        # Privacy notice — local transcription
+        # Privacy notice — fully local
         notice = ctk.CTkFrame(self, fg_color="#1a2a1a", corner_radius=6)
         notice.pack(fill="x", padx=16, pady=(0, 12))
         ctk.CTkLabel(
             notice,
-            text="Transcription is LOCAL — audio never leaves your computer.\n"
-                 "Transcribed text is sent to Claude API only if ANTHROPIC_API_KEY is set.",
+            text="100% local — no API keys required.\n"
+                 "Speech → local Whisper → local Qwen (Ollama) → app.  Nothing leaves your computer.",
             text_color="#5dbb5d",
             font=ctk.CTkFont(size=11),
             justify="left",
@@ -134,20 +133,18 @@ class VoicePanel(ctk.CTkFrame):
             return
 
         self._ui(lambda: self._set_preview(text))
+        self._ui(lambda: self._set_status("Parsing with Qwen (local)…", "gray"))
 
-        # 2. Intent parsing — Claude if key available, rule-based fallback otherwise
-        if os.environ.get("ANTHROPIC_API_KEY"):
-            self._ui(lambda: self._set_status("Parsing intent with Claude…", "gray"))
-            try:
-                action = parse_intent(text)
-            except Exception as exc:
-                self._ui(lambda: self._set_status(
-                    f"Claude error — falling back to rule-based parser.", "#e67e22"
-                ))
-                action = _rule_based_intent(text)
-        else:
+        # 2. Qwen via Ollama → rule-based fallback if Ollama unavailable
+        try:
+            action = qwen_parse_intent(text)
+        except RuntimeError as exc:
+            err = str(exc)
+            self._ui(lambda: self._set_status(err, "#e67e22"))
+            action = _rule_based_intent(text)
+        except Exception as exc:
             self._ui(lambda: self._set_status(
-                "No ANTHROPIC_API_KEY — using rule-based parser.", "#e67e22"
+                "Qwen error — using rule-based parser.", "#e67e22"
             ))
             action = _rule_based_intent(text)
 

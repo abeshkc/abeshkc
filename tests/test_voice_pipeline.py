@@ -8,8 +8,9 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta
+import json
 
 # ── inject fake packages before any service imports ───────────────────────────
 
@@ -236,14 +237,222 @@ class TestRuleBasedFallback(unittest.TestCase):
         self.assertEqual(result["intent"], "unknown")
         print("  PASS test_unknown_intent")
 
-    def test_claude_key_missing_falls_back(self):
-        os.environ.pop("ANTHROPIC_API_KEY", None)
+    def test_ollama_unavailable_falls_back(self):
+        """When Ollama is down the rule-based parser is used — no crash."""
         from ui.voice_panel import _rule_based_intent
         result = _rule_based_intent("Create a reminder for standup tomorrow at 9am")
         self.assertIn(result["intent"], ("create_reminder", "unknown"))
         self.assertTrue(result["requires_confirmation"])
-        os.environ["ANTHROPIC_API_KEY"] = "test-key"
-        print("  PASS test_claude_key_missing_falls_back")
+        print("  PASS test_ollama_unavailable_falls_back")
+
+
+# ── local LLM service (Qwen/Ollama) ──────────────────────────────────────────
+
+_GOOD_REMINDER_JSON = json.dumps({
+    "intent": "create_reminder",
+    "confidence": 0.92,
+    "requires_confirmation": False,
+    "fields": {
+        "title": "Meeting with Yaseen",
+        "description": "",
+        "date": "", "time": "",
+        "datetime": "tomorrow at 10pm",
+        "participants": ["Yaseen"],
+        "tags": [], "priority": "normal",
+        "recurrence": "none", "search_query": "",
+    },
+    "action_summary": "Create reminder: Meeting with Yaseen",
+    "missing_fields": [],
+})
+
+_GOOD_NOTE_JSON = json.dumps({
+    "intent": "create_meeting_note",
+    "confidence": 0.95,
+    "requires_confirmation": False,
+    "fields": {
+        "title": "DIEM monitoring discussion",
+        "description": "We discussed the DIEM plan.",
+        "date": "", "time": "", "datetime": "",
+        "participants": [], "tags": ["meeting"],
+        "priority": "normal", "recurrence": "none", "search_query": "",
+    },
+    "action_summary": "Create meeting note",
+    "missing_fields": [],
+})
+
+_GOOD_SEARCH_JSON = json.dumps({
+    "intent": "search",
+    "confidence": 0.90,
+    "requires_confirmation": False,
+    "fields": {
+        "title": "", "description": "", "date": "", "time": "", "datetime": "",
+        "participants": [], "tags": [], "priority": "normal",
+        "recurrence": "none", "search_query": "AgHiN",
+    },
+    "action_summary": "Search: AgHiN",
+    "missing_fields": [],
+})
+
+
+def _mock_ollama(get_mock, post_mock, response_json: str,
+                 models=None, running=True):
+    """Wire up requests.get and requests.post to simulate a working Ollama."""
+    import requests as req_mod
+
+    if running:
+        get_mock.side_effect = lambda url, **kw: (
+            MagicMock(status_code=200, json=lambda: {})
+            if "tags" not in url
+            else MagicMock(
+                status_code=200,
+                json=lambda: {"models": [{"name": m} for m in (models or ["qwen2.5:7b"])]},
+            )
+        )
+    else:
+        get_mock.side_effect = req_mod.exceptions.ConnectionError("refused")
+
+    post_mock.return_value = MagicMock(
+        status_code=200,
+        raise_for_status=lambda: None,
+        json=lambda: {"message": {"content": response_json}},
+    )
+
+
+class TestLocalLLMService(unittest.TestCase):
+
+    def setUp(self):
+        import services.local_llm_service as svc
+        os.environ.setdefault("OLLAMA_MODEL", "qwen2.5:7b")
+        os.environ.setdefault("OLLAMA_FALLBACK_MODEL", "qwen2.5:3b")
+
+    @patch("requests.post")
+    @patch("requests.get")
+    def test_valid_reminder_json(self, get_mock, post_mock):
+        _mock_ollama(get_mock, post_mock, _GOOD_REMINDER_JSON)
+        from services.local_llm_service import parse_intent
+        result = parse_intent("Remind me about meeting with Yaseen tomorrow at 10pm")
+        self.assertEqual(result["intent"], "create_reminder")
+        self.assertAlmostEqual(result["confidence"], 0.92)
+        self.assertEqual(result["fields"]["title"], "Meeting with Yaseen")
+        print("  PASS test_valid_reminder_json")
+
+    @patch("requests.post")
+    @patch("requests.get")
+    def test_meeting_note_parsing(self, get_mock, post_mock):
+        _mock_ollama(get_mock, post_mock, _GOOD_NOTE_JSON)
+        from services.local_llm_service import parse_intent
+        result = parse_intent("Create a meeting note about DIEM plan")
+        self.assertEqual(result["intent"], "create_meeting_note")
+        print("  PASS test_meeting_note_parsing")
+
+    @patch("requests.post")
+    @patch("requests.get")
+    def test_search_parsing(self, get_mock, post_mock):
+        _mock_ollama(get_mock, post_mock, _GOOD_SEARCH_JSON)
+        from services.local_llm_service import parse_intent
+        result = parse_intent("Find my notes about AgHiN")
+        self.assertEqual(result["intent"], "search")
+        self.assertEqual(result["fields"]["search_query"], "AgHiN")
+        print("  PASS test_search_parsing")
+
+    @patch("requests.post")
+    @patch("requests.get")
+    def test_recurring_reminder_parsing(self, get_mock, post_mock):
+        payload = json.loads(_GOOD_REMINDER_JSON)
+        payload["fields"]["recurrence"] = "weekly"
+        payload["fields"]["title"] = "Call Yaseen"
+        _mock_ollama(get_mock, post_mock, json.dumps(payload))
+        from services.local_llm_service import parse_intent
+        result = parse_intent("Remind me to call Yaseen every Friday at 3pm")
+        self.assertEqual(result["fields"]["recurrence"], "weekly")
+        print("  PASS test_recurring_reminder_parsing")
+
+    @patch("requests.get")
+    def test_ollama_unavailable_raises(self, get_mock):
+        import requests as req_mod
+        get_mock.side_effect = req_mod.exceptions.ConnectionError("refused")
+        from services.local_llm_service import parse_intent
+        with self.assertRaises(RuntimeError) as ctx:
+            parse_intent("some text")
+        self.assertIn("Ollama", str(ctx.exception))
+        print("  PASS test_ollama_unavailable_raises")
+
+    @patch("requests.get")
+    def test_model_missing_raises(self, get_mock):
+        get_mock.side_effect = lambda url, **kw: (
+            MagicMock(status_code=200, json=lambda: {})
+            if "tags" not in url
+            else MagicMock(status_code=200, json=lambda: {"models": []})
+        )
+        from services.local_llm_service import parse_intent
+        with self.assertRaises(RuntimeError) as ctx:
+            parse_intent("some text")
+        self.assertIn("ollama pull", str(ctx.exception))
+        print("  PASS test_model_missing_raises")
+
+    @patch("requests.post")
+    @patch("requests.get")
+    def test_model_fallback_used(self, get_mock, post_mock):
+        # Primary model missing but fallback available
+        _mock_ollama(get_mock, post_mock, _GOOD_REMINDER_JSON, models=["qwen2.5:3b"])
+        from services.local_llm_service import parse_intent
+        result = parse_intent("test")
+        self.assertEqual(result["intent"], "create_reminder")
+        print("  PASS test_model_fallback_used")
+
+    @patch("requests.post")
+    @patch("requests.get")
+    def test_malformed_json_raises(self, get_mock, post_mock):
+        _mock_ollama(get_mock, post_mock, "Sorry, I cannot parse that.")
+        from services.local_llm_service import parse_intent
+        with self.assertRaises(ValueError):
+            parse_intent("some text")
+        print("  PASS test_malformed_json_raises")
+
+    @patch("requests.post")
+    @patch("requests.get")
+    def test_markdown_fences_stripped(self, get_mock, post_mock):
+        fenced = f"```json\n{_GOOD_REMINDER_JSON}\n```"
+        _mock_ollama(get_mock, post_mock, fenced)
+        from services.local_llm_service import parse_intent
+        result = parse_intent("test")
+        self.assertEqual(result["intent"], "create_reminder")
+        print("  PASS test_markdown_fences_stripped")
+
+    @patch("requests.post")
+    @patch("requests.get")
+    def test_destructive_action_requires_confirmation(self, get_mock, post_mock):
+        payload = json.loads(_GOOD_REMINDER_JSON)
+        payload["intent"] = "update_reminder"
+        payload["requires_confirmation"] = True
+        _mock_ollama(get_mock, post_mock, json.dumps(payload))
+        from services.local_llm_service import parse_intent
+        result = parse_intent("delete my reminder about Yaseen")
+        self.assertTrue(result["requires_confirmation"])
+        print("  PASS test_destructive_action_requires_confirmation")
+
+    @patch("requests.post")
+    @patch("requests.get")
+    def test_low_confidence_does_not_auto_save(self, get_mock, post_mock):
+        payload = json.loads(_GOOD_REMINDER_JSON)
+        payload["confidence"] = 0.45
+        _mock_ollama(get_mock, post_mock, json.dumps(payload))
+        from services.local_llm_service import parse_intent
+        from ui.voice_panel import CONFIDENCE_REVIEW
+        result = parse_intent("mumbled unclear command")
+        self.assertLess(result["confidence"], CONFIDENCE_REVIEW)
+        print("  PASS test_low_confidence_does_not_auto_save")
+
+    @patch("requests.post")
+    @patch("requests.get")
+    def test_high_confidence_create_reminder(self, get_mock, post_mock):
+        _mock_ollama(get_mock, post_mock, _GOOD_REMINDER_JSON)
+        from services.local_llm_service import parse_intent
+        from ui.voice_panel import CONFIDENCE_AUTO
+        result = parse_intent("Clear command with full details")
+        self.assertGreaterEqual(result["confidence"], CONFIDENCE_AUTO)
+        self.assertFalse(result["requires_confirmation"])
+        print("  PASS test_high_confidence_create_reminder")
 
 
 # ── end-to-end pipeline ───────────────────────────────────────────────────────
@@ -353,6 +562,7 @@ if __name__ == "__main__":
         TestLocalWhisperService,
         TestSpeechToText,
         TestIntentParser,
+        TestLocalLLMService,
         TestRuleBasedFallback,
         TestVoicePipeline,
     ]:
