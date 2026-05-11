@@ -53,10 +53,17 @@ def init_db() -> None:
 def _migrate() -> None:
     """Add columns introduced after the initial schema — safe to run on existing DBs."""
     new_columns = [
+        # reminders — recurrence + done tracking
         "ALTER TABLE reminders ADD COLUMN recurrence_type TEXT NOT NULL DEFAULT 'none'",
         "ALTER TABLE reminders ADD COLUMN recurrence_interval INTEGER NOT NULL DEFAULT 1",
         "ALTER TABLE reminders ADD COLUMN recurrence_end_date TEXT",
         "ALTER TABLE reminders ADD COLUMN completed_at TEXT",
+        # notes — voice / LLM metadata
+        "ALTER TABLE notes ADD COLUMN source_type TEXT NOT NULL DEFAULT 'manual'",
+        "ALTER TABLE notes ADD COLUMN original_transcription TEXT",
+        "ALTER TABLE notes ADD COLUMN llm_intent TEXT",
+        "ALTER TABLE notes ADD COLUMN llm_confidence REAL",
+        "ALTER TABLE notes ADD COLUMN created_from_voice INTEGER NOT NULL DEFAULT 0",
     ]
     with get_connection() as conn:
         for sql in new_columns:

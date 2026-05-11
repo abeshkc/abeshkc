@@ -15,6 +15,7 @@ All data lives in SQLite at `~/.noteremind/data.db` — no cloud, no accounts.
 - Deletion confirmation dialog for notes and reminders (prevents accidental loss)
 - Recurring reminders — daily, weekly, monthly, yearly (with custom interval); marking done auto-schedules the next occurrence
 - Done tab — completed reminders move to a separate tab with `completed_at` timestamp; data is never deleted
+- **Voice tab** — speak a command, Whisper transcribes it, Claude parses intent and autonomously creates reminders or meeting notes
 
 ---
 
@@ -26,9 +27,27 @@ All data lives in SQLite at `~/.noteremind/data.db` — no cloud, no accounts.
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Run the app
+# 2. Copy the env template and add your API keys
+copy .env.example .env
+# Edit .env and set OPENAI_API_KEY and ANTHROPIC_API_KEY
+
+# 3. Run the app
 python main.py
 ```
+
+### API Keys
+
+| Key | Used for | Required? |
+|---|---|---|
+| `OPENAI_API_KEY` | Whisper speech-to-text | Only for Voice tab |
+| `ANTHROPIC_API_KEY` | Claude intent parsing | Only for Voice tab |
+
+The app runs fully without both keys — they are only needed when you use the **Voice** tab.
+
+### Microphone permissions
+
+Windows should prompt for mic access the first time you click **Start Recording**.  
+If recording silently fails, check **Settings → Privacy → Microphone** and ensure the app has access.
 
 ---
 
@@ -60,9 +79,10 @@ python main.py
 Each file is self-contained and runnable directly:
 
 ```powershell
-python tests/test_notes.py
-python tests/test_reminders.py
-python tests/test_parser.py
+py tests/test_notes.py
+py tests/test_reminders.py
+py tests/test_parser.py
+py tests/test_voice_pipeline.py   # no API keys needed — fully mocked
 ```
 
 ---
@@ -94,14 +114,16 @@ python tests/test_parser.py
 ## Database Schema
 
 ```sql
-notes      (id, title, content, tags, created_at, updated_at)
+notes      (id, title, content, tags, created_at, updated_at,
+            source_type, original_transcription, llm_intent, llm_confidence, created_from_voice)
 reminders  (id, note_id, title, message, due_at, is_done, created_at,
             recurrence_type, recurrence_interval, recurrence_end_date, completed_at)
 ```
 
-`recurrence_type` is one of `none | daily | weekly | monthly | yearly` (default `none`).  
-`recurrence_interval` controls "every N units" (default 1).  
-`completed_at` is set when a reminder is marked done; rows are never hard-deleted.  
+`source_type` — `manual` (default) or `voice`.  
+`original_transcription` — raw Whisper text stored with voice-created notes.  
+`recurrence_type` — `none | daily | weekly | monthly | yearly`.  
+`completed_at` — set when a reminder is marked done; rows are never hard-deleted.  
 Migration is automatic — existing databases are upgraded on first run via `ALTER TABLE`.
 
 ---

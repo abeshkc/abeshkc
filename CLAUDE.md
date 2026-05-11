@@ -2,38 +2,45 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Running the project
+## Project: NoteRemind
 
-No build step — open `index.html` directly in a browser:
+Local-first notes + reminders app for Windows. Stack: Python 3.11+ · CustomTkinter · SQLite.
+
+### Running
 
 ```powershell
-Start-Process index.html
+pip install -r requirements.txt
+python main.py
 ```
 
-## Architecture
+### Architecture
 
-Single-file project: all HTML, CSS, and JS lives in `index.html`. No dependencies, no bundler, no framework.
+| File | Role |
+|---|---|
+| `main.py` | Entry point — inits DB, starts background reminder thread, opens UI |
+| `database.py` | SQLite setup; reads `NOTEREMIND_DB` env var to override DB path (used in tests) |
+| `notifications.py` | Windows toast via plyer |
+| `core/notes.py` | Note CRUD |
+| `core/reminders.py` | Reminder CRUD + `get_due_reminders()` |
+| `core/parser.py` | Mock NLP datetime parser (regex) — replace with Claude API in Phase 2 |
+| `ui/app.py` | CTk main window + sidebar navigation |
+| `ui/notes_view.py` | Notes list + editor panel |
+| `ui/reminders_view.py` | Reminder create form + list |
 
-**Game state** (plain JS variables in `index.html`):
-- `board` — flat 9-element array (`null | 'X' | 'O'`), indexed 0–8 left-to-right, top-to-bottom
-- `current` — whose turn (`'X'` or `'O'`)
-- `gameOver` — boolean
-- `scores` — `{ X, O, D }` object, persists across "New Game" restarts
+### Tests
 
-**Rendering** is a single `render()` call that rebuilds the entire DOM state from the `board` array. There is no partial update pattern — always call `render()` after mutating state.
+Run each file directly — no pytest needed:
 
-**Win detection** checks `board` against the 8 hardcoded winning index triples in `WINS`.
+```powershell
+python tests/test_notes.py
+python tests/test_reminders.py
+python tests/test_parser.py
+```
 
-## Color palette
+### Database
 
-| Token | Hex | Used for |
-|---|---|---|
-| Background | `#1a1a2e` | Page background |
-| Cell | `#16213e` | Cell / score box background |
-| Hover/win | `#0f3460` | Cell hover and win highlight |
-| X / accent | `#e94560` | X player, heading, button |
-| O / secondary | `#a8dadc` | O player, status text |
-| Draw | `#f4a261` | Draw score |
+SQLite at `~/.noteremind/data.db`. Tables: `notes`, `reminders`.  
+Set `NOTEREMIND_DB=<path>` to point at a different file (tests use temp files this way).
 
 ## Git / GitHub — always commit and push
 
