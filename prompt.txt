@@ -1,166 +1,113 @@
-Please modify my planning/reminder app to integrate OpenAI Whisper speech-to-text and connect it to the existing Claude LLM action system.
+Modify the app UI with the following branding and interface improvements.
 
-Goal:
-I want to speak natural commands, have Whisper transcribe them, then send the transcription to Claude for intent detection and autonomous app actions.
+1. Remove text labels from main navigation buttons
 
-Example voice commands:
-- “Create a reminder for meeting with Yaseen tomorrow at 10 PM.”
-- “Create a meeting note with the following text: We discussed the DIEM monitoring plan and agreed to revise the sampling approach.”
-- “Schedule an appointment next Friday at 2 PM with the FAO team.”
-- “Add a note: review Yemen brief before Thursday.”
-- “Find my notes about AgHiN.”
+I do not want text labels like:
+- Meeting
+- Notes
+- Voice
+- Reminders
+- Done
+- Search
 
-Required workflow:
-1. User clicks a microphone button.
-2. App records speech.
-3. Audio is sent to OpenAI Whisper for transcription.
-4. Transcribed text is displayed in a preview box.
-5. Transcribed text is sent to Claude LLM.
-6. Claude classifies intent and extracts structured fields.
-7. App automatically fills the correct text boxes.
-8. App performs the action where safe:
-   - create reminder
-   - create meeting note
-   - create appointment
-   - search notes
-   - update reminder
-9. For destructive actions, still ask for confirmation.
+on the main navigation buttons.
 
-Important:
-For create actions, the app can act autonomously after transcription and Claude parsing.
-For delete or overwrite actions, the app must ask for confirmation.
+Instead:
+- use clean modern icons only
+- keep tooltips on hover so users still understand the buttons
+- icons should be intuitive and visually polished
+- maintain accessibility and usability
 
-Implementation requirements:
+Suggested examples:
+- Notes → document/notepad icon
+- Reminders → bell/alarm icon
+- Meetings → calendar or people icon
+- Done → checkmark icon
+- Search → magnifying glass
+- Voice/Aria → microphone or assistant icon
+- Settings → gear icon
 
-1. Whisper integration
-- Use OpenAI Whisper API or the current OpenAI speech-to-text endpoint.
-- Store OPENAI_API_KEY in .env, never hard-code it.
-- Add a service such as:
-  /services/speech_to_text_service.py
-- Function example:
-  transcribe_audio(audio_file_path) -> str
-- Add graceful error handling for:
-  - no API key
-  - microphone not found
-  - network/API failure
-  - empty transcription
+2. Rename “Voice Assistant”
 
-2. Audio recording
-- Add a microphone button to the UI.
-- User clicks “Start Recording”.
-- User clicks “Stop Recording”.
-- Save temporary audio locally.
-- Send the temporary audio to Whisper.
-- Delete temporary audio after successful transcription unless debug mode is enabled.
+The assistant should no longer be called:
+- “Voice Assistant”
 
-3. Claude action pipeline
-Create or update an agent pipeline:
+Rename it consistently throughout the app to:
 
-speech audio
-→ Whisper transcription
-→ Claude intent parser
-→ structured JSON action
-→ UI auto-fill
-→ database action
-→ confirmation message
+“Your Personal Organizer”
 
-Claude should return only valid JSON in this structure:
+Update:
+- floating assistant window title
+- settings references
+- onboarding/help text
+- placeholders/tooltips
+- README if needed
 
-{
-  "intent": "create_reminder | create_meeting_note | create_appointment | search | update_reminder | unknown",
-  "confidence": 0.0,
-  "requires_confirmation": false,
-  "fields": {
-    "title": "",
-    "description": "",
-    "date": "",
-    "time": "",
-    "datetime": "",
-    "participants": [],
-    "tags": [],
-    "priority": "normal",
-    "recurrence": "none",
-    "search_query": ""
-  },
-  "action_summary": "",
-  "missing_fields": []
-}
+The wording should feel:
+- personal
+- intelligent
+- calm
+- premium
+- productivity-focused
 
-4. UI auto-fill
-After Claude returns structured JSON:
-- If intent is create_reminder, fill reminder form fields.
-- If intent is create_meeting_note, fill meeting note form.
-- If intent is create_appointment, fill appointment form.
-- If intent is search, run search and show results.
-- If confidence is low or required fields are missing, fill what is available and ask user to review.
+3. Replace the musical note icon on Aria
 
-5. Autonomous actions
-- If confidence is high and required fields are present, create the item automatically.
-- Show message:
-  “Created reminder: Meeting with Yaseen, tomorrow at 10 PM.”
-- If confidence is medium or fields are missing, fill the form but do not save automatically.
-- Suggested thresholds:
-  - confidence >= 0.85: auto-save create actions
-  - confidence 0.60–0.84: fill form and ask user to confirm
-  - confidence < 0.60: show transcription and ask user to clarify
+Currently Aria uses a musical note icon.
 
-6. Date/time parsing
-- Correctly interpret natural language dates:
-  - tomorrow
-  - next Friday
-  - today at 5 PM
-  - Monday morning
-- Use the user’s local timezone.
-- If timezone is not already configured, add setting for timezone.
-- Default timezone can be Asia/Amman unless the app already has a timezone setting.
+Remove it completely.
 
-7. Meeting notes
-For commands like:
-“Create a meeting note with the following text: ...”
-- Title can be generated from the text if not provided.
-- The full dictated content should go into the note body.
-- Add source_type = voice.
-- Store original transcription.
+Replace it with something more creative and suitable for an intelligent organizer assistant.
 
-8. Database changes if needed
-Add fields if they do not already exist:
-- source_type
-- original_transcription
-- llm_intent
-- llm_confidence
-- created_from_voice boolean
+Possible design directions:
+- abstract assistant orb
+- pulse/radar icon
+- glowing assistant circle
+- constellation/star icon
+- minimalist neural-wave icon
+- elegant spark symbol
+- intelligent assistant glyph
+- subtle orbit/ring design
 
-9. Safety and privacy
-- Show clearly that audio/transcription may be sent to OpenAI and Claude APIs.
-- Add a setting to enable/disable cloud transcription.
-- Do not send linked file contents to any API unless explicitly approved.
-- Log only metadata, not raw audio, unless debug mode is enabled.
+Requirements:
+- should feel modern and premium
+- should not resemble a music app
+- should fit a voice-first AI organizer
+- should work well in dark and light themes
+- should animate subtly when listening/processing if possible
 
-10. Tests
-Add tests for:
-- voice command → reminder JSON
-- voice command → meeting note JSON
-- missing time handling
-- low confidence behavior
-- empty transcription
-- API failure
-- UI form autofill
-- autonomous save threshold
+Be creative and propose 3–5 icon concepts internally before implementing the best one.
 
-11. README update
-Update README with:
-- how to set OPENAI_API_KEY
-- how to set ANTHROPIC_API_KEY
-- microphone permissions
-- Whisper usage
-- privacy notes
-- troubleshooting
+4. Preserve existing functionality
 
-Please implement this as a clean patch to the existing app. Do not rewrite the whole app. Keep the current architecture where possible.
+Do not remove or break:
+- voice transcription
+- Claude API parsing
+- reminders
+- recurring reminders
+- notes
+- meeting integration
+- reminder popups
+- sorting
+- adjustable layouts
+- confirmation/review workflow
 
-After implementation, show:
-1. Files changed.
-2. New environment variables.
-3. Database migration details.
-4. How to test with example voice commands.
-5. Any limitations.
+5. UI polish
+
+While implementing:
+- keep icon sizes visually balanced
+- improve spacing/alignment if needed
+- ensure tooltips appear quickly
+- maintain clean modern UI consistency
+
+6. Tests
+
+Add/update tests for:
+- navigation buttons render as icons only
+- tooltips still appear correctly
+- “Voice Assistant” text no longer appears
+- “Your Personal Organizer” appears consistently
+- Aria icon changed successfully
+- icon animations do not break recording workflow
+
+Implementation rule:
+Patch the existing GUI cleanly without rewriting the entire app.
