@@ -33,14 +33,16 @@ def create_reminder(
     recurrence_interval: int = 1,
     recurrence_end_date: str | None = None,
     importance: str = "Normal",
+    remind_before: str = "",
 ) -> int:
     importance = importance if importance in IMPORTANCE_LEVELS else "Normal"
     with get_connection() as conn:
         cur = conn.execute(
             """INSERT INTO reminders
                (title, due_at, message, note_id,
-                recurrence_type, recurrence_interval, recurrence_end_date, importance)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                recurrence_type, recurrence_interval, recurrence_end_date,
+                importance, remind_before)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 title.strip(),
                 due_at.strftime("%Y-%m-%d %H:%M:%S"),
@@ -50,6 +52,7 @@ def create_reminder(
                 recurrence_interval,
                 recurrence_end_date,
                 importance,
+                remind_before,
             ),
         )
         return cur.lastrowid

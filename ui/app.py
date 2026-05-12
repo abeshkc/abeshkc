@@ -128,6 +128,7 @@ class App(ctk.CTk):
         self.notes_view.pack_forget()
         self.reminders_view.pack_forget()
         self.voice_panel.pack(fill="both", expand=True)
+        self.voice_panel.refresh_dashboard()
 
     def show_notes(self):
         self.reminders_view.pack_forget()

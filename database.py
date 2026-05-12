@@ -69,6 +69,8 @@ def _migrate() -> None:
         "ALTER TABLE notes     ADD COLUMN importance TEXT NOT NULL DEFAULT 'Normal'",
         # note date + reminder details alias (phase 4)
         "ALTER TABLE notes ADD COLUMN note_date TEXT",
+        # pre-reminder intervals (phase 5) — comma-separated minutes e.g. "30,60,1440"
+        "ALTER TABLE reminders ADD COLUMN remind_before TEXT NOT NULL DEFAULT ''",
     ]
     with get_connection() as conn:
         for sql in new_columns:

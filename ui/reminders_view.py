@@ -101,6 +101,20 @@ class RemindersView(ctk.CTkFrame):
                      width=40, font=ctk.CTkFont(size=13)).pack(
             side="left", padx=(4, 0))
 
+        # Remind Before — multi-select checkboxes
+        row_rb = _row(form)
+        ctk.CTkLabel(row_rb, text="Remind before:", width=76, anchor="w",
+                     font=ctk.CTkFont(size=13)).pack(side="left")
+        self._remind_before_vars: dict[int, ctk.BooleanVar] = {}
+        _RB_OPTIONS = [("5 min", 5), ("15 min", 15), ("30 min", 30),
+                       ("1 hr", 60), ("3 hrs", 180), ("1 day", 1440)]
+        for lbl, mins in _RB_OPTIONS:
+            var = ctk.BooleanVar(value=False)
+            self._remind_before_vars[mins] = var
+            ctk.CTkCheckBox(row_rb, text=lbl, variable=var,
+                            width=72, font=ctk.CTkFont(size=12)).pack(
+                side="left", padx=(6, 0))
+
         # Linked note
         row4 = _row(form)
         ctk.CTkLabel(row4, text="Note:", width=76, anchor="w",
@@ -278,6 +292,9 @@ class RemindersView(ctk.CTkFrame):
         recur   = self._recur_var.get()
         imp     = self._imp_var.get()
         details = self._details_var.get().strip()
+        remind_before = ",".join(
+            str(m) for m, var in self._remind_before_vars.items() if var.get()
+        )
         note_id: int | None = None
         sel = self._note_var.get()
         if sel != "None":
@@ -285,7 +302,7 @@ class RemindersView(ctk.CTkFrame):
         create_reminder(
             title, due, message=details, note_id=note_id,
             recurrence_type=recur, recurrence_interval=interval,
-            importance=imp,
+            importance=imp, remind_before=remind_before,
         )
         self._title_var.set("")
         self._when_var.set("")
@@ -294,6 +311,8 @@ class RemindersView(ctk.CTkFrame):
         self._recur_var.set("none")
         self._interval_var.set("1")
         self._imp_var.set("Normal")
+        for var in self._remind_before_vars.values():
+            var.set(False)
         self._status(f"✓ Set for {due.strftime('%b %d at %H:%M')}", "#27ae60")
         self.refresh()
 

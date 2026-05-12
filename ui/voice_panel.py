@@ -89,8 +89,20 @@ class VoicePanel(ctk.CTkFrame):
     # ── layout ────────────────────────────────────────────────────────────
 
     def _build(self):
+        # ── Top-level horizontal split: voice left, dashboard right ──
+        hbox = ctk.CTkFrame(self, fg_color="transparent")
+        hbox.pack(fill="both", expand=True)
+
+        left = ctk.CTkFrame(hbox, fg_color="transparent")
+        left.pack(side="left", fill="both", expand=True)
+
+        dash = ctk.CTkFrame(hbox, width=290, fg_color="#13162a", corner_radius=12)
+        dash.pack(side="right", fill="y", padx=(0, 14), pady=14)
+        dash.pack_propagate(False)
+        self._build_dashboard(dash)
+
         # ── App name + subtitle ──
-        hdr = ctk.CTkFrame(self, fg_color="transparent")
+        hdr = ctk.CTkFrame(left, fg_color="transparent")
         hdr.pack(fill="x", padx=20, pady=(20, 2))
         ctk.CTkLabel(
             hdr, text="✦  Aria",
@@ -109,7 +121,7 @@ class VoicePanel(ctk.CTkFrame):
 
         # ── Status banner ──
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
-        banner  = ctk.CTkFrame(self, fg_color="#1a1e2a", corner_radius=6)
+        banner  = ctk.CTkFrame(left, fg_color="#1a1e2a", corner_radius=6)
         banner.pack(fill="x", padx=20, pady=(10, 0))
         ctk.CTkLabel(
             banner,
@@ -121,7 +133,7 @@ class VoicePanel(ctk.CTkFrame):
         ).pack(padx=12, pady=7, anchor="w")
 
         # ── Mic icon canvas ──
-        mic_outer = ctk.CTkFrame(self, fg_color="#1a1e2a", corner_radius=10)
+        mic_outer = ctk.CTkFrame(left, fg_color="#1a1e2a", corner_radius=10)
         mic_outer.pack(pady=(18, 4))
 
         self._mic_canvas = tk.Canvas(
@@ -132,31 +144,27 @@ class VoicePanel(ctk.CTkFrame):
         self._mic_canvas.bind("<Button-1>", lambda e: self._toggle())
 
         # Draw elements back-to-front
-        # 3 expanding rings (recording)
         self._ring_ids = []
         for _ in range(3):
             rid = self._mic_canvas.create_oval(0, 0, 0, 0, outline="#e74c3c", width=2)
             self._ring_ids.append(rid)
-        # Processing arc
         m = _CX - _BR - 10
         self._proc_arc = self._mic_canvas.create_arc(
             m, m, _CS - m, _CS - m,
             start=0, extent=110, outline="#3B8ED0", width=3, style="arc",
         )
         self._mic_canvas.itemconfig(self._proc_arc, state="hidden")
-        # Base circle
         self._mic_bg = self._mic_canvas.create_oval(
             _CX - _BR, _CY - _BR, _CX + _BR, _CY + _BR,
             fill="#2563eb", outline="", width=0,
         )
-        # Mic emoji
         self._mic_label = self._mic_canvas.create_text(
             _CX, _CY, text="🎙", font=("Segoe UI Emoji", 26),
         )
         _ToolTip(self._mic_canvas, "Press to start speaking")
 
         # ── Waveform bars ──
-        wave_wrap = ctk.CTkFrame(self, fg_color="transparent")
+        wave_wrap = ctk.CTkFrame(left, fg_color="transparent")
         wave_wrap.pack(pady=(4, 6))
         self._wave_canvas = tk.Canvas(
             wave_wrap, width=_CAN_W, height=_CAN_H,
@@ -173,29 +181,29 @@ class VoicePanel(ctk.CTkFrame):
             self._bar_ids.append((bid, x1, x2))
 
         # ── Progress bar (hidden until processing) ──
-        self._progress = ctk.CTkProgressBar(self, width=300, mode="indeterminate")
+        self._progress = ctk.CTkProgressBar(left, width=300, mode="indeterminate")
 
         # ── Status label ──
         self._status = ctk.CTkLabel(
-            self, text="Ready — press the mic to speak",
+            left, text="Ready — press the mic to speak",
             text_color="gray", font=ctk.CTkFont(size=13),
         )
         self._status.pack(pady=(0, 10))
 
         # ── Transcription preview ──
-        ctk.CTkLabel(self, text="Transcription:", anchor="w",
+        ctk.CTkLabel(left, text="Transcription:", anchor="w",
                      font=ctk.CTkFont(size=13)).pack(anchor="w", padx=20, pady=(4, 2))
         self._preview = ctk.CTkTextbox(
-            self, height=62, wrap="word", state="disabled",
+            left, height=62, wrap="word", state="disabled",
             font=ctk.CTkFont(size=13),
         )
         self._preview.pack(fill="x", padx=20, pady=(0, 8))
 
-        # ── Result panel (packed on demand) ──
-        self._result_panel = ctk.CTkFrame(self, corner_radius=8)
+        # ── Result panel (packed on demand into left) ──
+        self._result_panel = ctk.CTkFrame(left, corner_radius=8)
 
         # ── Auto-save toggle ──
-        bottom = ctk.CTkFrame(self, fg_color="transparent")
+        bottom = ctk.CTkFrame(left, fg_color="transparent")
         bottom.pack(side="bottom", fill="x", padx=20, pady=(0, 16))
         ctk.CTkSwitch(
             bottom,
@@ -204,6 +212,87 @@ class VoicePanel(ctk.CTkFrame):
             font=ctk.CTkFont(size=12),
             onvalue=True, offvalue=False,
         ).pack(side="left")
+
+    # ── dashboard ─────────────────────────────────────────────────────────
+
+    def _build_dashboard(self, parent):
+        ctk.CTkLabel(
+            parent, text="📋  Overview",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).pack(anchor="w", padx=14, pady=(14, 4))
+
+        ctk.CTkFrame(parent, height=1, fg_color="#2a2d40").pack(fill="x", padx=10, pady=(0, 8))
+
+        ctk.CTkLabel(parent, text="Recent Notes",
+                     font=ctk.CTkFont(size=12, weight="bold"),
+                     text_color="#5d8dbb").pack(anchor="w", padx=14)
+        self._dash_notes = ctk.CTkScrollableFrame(
+            parent, fg_color="transparent", height=200)
+        self._dash_notes.pack(fill="x", padx=8, pady=(4, 10))
+
+        ctk.CTkFrame(parent, height=1, fg_color="#2a2d40").pack(fill="x", padx=10, pady=(0, 8))
+
+        ctk.CTkLabel(parent, text="Upcoming Reminders",
+                     font=ctk.CTkFont(size=12, weight="bold"),
+                     text_color="#5d8dbb").pack(anchor="w", padx=14)
+        self._dash_reminders = ctk.CTkScrollableFrame(
+            parent, fg_color="transparent", height=220)
+        self._dash_reminders.pack(fill="x", padx=8, pady=(4, 10))
+
+        self.refresh_dashboard()
+
+    def refresh_dashboard(self):
+        self._refresh_dash_notes()
+        self._refresh_dash_reminders()
+
+    def _refresh_dash_notes(self):
+        from core.notes import list_notes
+        for w in self._dash_notes.winfo_children():
+            w.destroy()
+        notes = list_notes("", sort_by="updated_at", ascending=False)[:5]
+        if not notes:
+            ctk.CTkLabel(self._dash_notes, text="No notes yet.",
+                         text_color="gray", font=ctk.CTkFont(size=12)).pack(pady=10)
+            return
+        for note in notes:
+            card = ctk.CTkFrame(self._dash_notes, fg_color="#1e2235", corner_radius=8)
+            card.pack(fill="x", pady=3, padx=2)
+            ctk.CTkLabel(
+                card, text=note["title"] or "(untitled)", anchor="w",
+                font=ctk.CTkFont(size=12, weight="bold"),
+            ).pack(anchor="w", padx=8, pady=(6, 1))
+            snippet = (note.get("content") or "").strip()[:55]
+            if snippet:
+                ctk.CTkLabel(
+                    card, text=snippet, anchor="w",
+                    text_color="#888888", font=ctk.CTkFont(size=11), wraplength=240,
+                ).pack(anchor="w", padx=8, pady=(0, 6))
+
+    def _refresh_dash_reminders(self):
+        from core.reminders import list_reminders
+        from datetime import datetime as _dt
+        for w in self._dash_reminders.winfo_children():
+            w.destroy()
+        reminders = list_reminders(include_done=False, sort_by="due_at", ascending=True)[:5]
+        if not reminders:
+            ctk.CTkLabel(self._dash_reminders, text="No upcoming reminders.",
+                         text_color="gray", font=ctk.CTkFont(size=12)).pack(pady=10)
+            return
+        now = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+        for r in reminders:
+            is_overdue = r["due_at"] < now
+            card = ctk.CTkFrame(self._dash_reminders, fg_color="#1e2235", corner_radius=8)
+            card.pack(fill="x", pady=3, padx=2)
+            ctk.CTkLabel(
+                card, text=r["title"], anchor="w",
+                font=ctk.CTkFont(size=12, weight="bold"),
+            ).pack(anchor="w", padx=8, pady=(6, 1))
+            due_str = r["due_at"][:16]
+            color = "#e74c3c" if is_overdue else "#5d8dbb"
+            ctk.CTkLabel(
+                card, text=("⚠ Overdue · " if is_overdue else "🕐 ") + due_str,
+                anchor="w", text_color=color, font=ctk.CTkFont(size=11),
+            ).pack(anchor="w", padx=8, pady=(0, 6))
 
     # ── recording ─────────────────────────────────────────────────────────
 
