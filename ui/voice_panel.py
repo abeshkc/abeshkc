@@ -185,8 +185,8 @@ class VoicePanel(ctk.CTkFrame):
 
         # ── Status label ──
         self._status = ctk.CTkLabel(
-            left, text="Ready — press the mic to speak",
-            text_color="gray", font=ctk.CTkFont(size=13),
+            left, text="Press to talk to Aria",
+            text_color="#5d8dbb", font=ctk.CTkFont(size=15, weight="bold"),
         )
         self._status.pack(pady=(0, 10))
 
@@ -213,31 +213,79 @@ class VoicePanel(ctk.CTkFrame):
             onvalue=True, offvalue=False,
         ).pack(side="left")
 
-    # ── dashboard ─────────────────────────────────────────────────────────
+    # ── dashboard (3-pane) ────────────────────────────────────────────────
 
     def _build_dashboard(self, parent):
         ctk.CTkLabel(
             parent, text="📋  Overview",
             font=ctk.CTkFont(size=14, weight="bold"),
-        ).pack(anchor="w", padx=14, pady=(14, 4))
+        ).pack(anchor="w", padx=14, pady=(12, 4))
 
-        ctk.CTkFrame(parent, height=1, fg_color="#2a2d40").pack(fill="x", padx=10, pady=(0, 8))
+        # Vertical resizable paned window
+        paned = tk.PanedWindow(
+            parent, orient="vertical",
+            sashwidth=5, sashrelief="flat",
+            background="#2a2d40", bd=0,
+        )
+        paned.pack(fill="both", expand=True, padx=6, pady=(0, 8))
 
-        ctk.CTkLabel(parent, text="Recent Notes",
-                     font=ctk.CTkFont(size=12, weight="bold"),
-                     text_color="#5d8dbb").pack(anchor="w", padx=14)
-        self._dash_notes = ctk.CTkScrollableFrame(
-            parent, fg_color="transparent", height=200)
-        self._dash_notes.pack(fill="x", padx=8, pady=(4, 10))
+        # ── Pane 1: Recent Notes ──────────────────────────────────────────
+        notes_pane = ctk.CTkFrame(paned, fg_color="transparent")
+        ctk.CTkLabel(notes_pane, text="Recent Notes",
+                     font=ctk.CTkFont(size=11, weight="bold"),
+                     text_color="#5d8dbb").pack(anchor="w", padx=8, pady=(6, 2))
+        self._dash_notes = ctk.CTkScrollableFrame(notes_pane, fg_color="transparent")
+        self._dash_notes.pack(fill="both", expand=True, padx=4)
+        paned.add(notes_pane, minsize=80)
 
-        ctk.CTkFrame(parent, height=1, fg_color="#2a2d40").pack(fill="x", padx=10, pady=(0, 8))
+        # ── Pane 2: Upcoming Reminders ────────────────────────────────────
+        rem_pane = ctk.CTkFrame(paned, fg_color="transparent")
+        ctk.CTkLabel(rem_pane, text="Upcoming Reminders",
+                     font=ctk.CTkFont(size=11, weight="bold"),
+                     text_color="#5d8dbb").pack(anchor="w", padx=8, pady=(6, 2))
+        self._dash_reminders = ctk.CTkScrollableFrame(rem_pane, fg_color="transparent")
+        self._dash_reminders.pack(fill="both", expand=True, padx=4)
+        paned.add(rem_pane, minsize=80)
 
-        ctk.CTkLabel(parent, text="Upcoming Reminders",
-                     font=ctk.CTkFont(size=12, weight="bold"),
-                     text_color="#5d8dbb").pack(anchor="w", padx=14)
-        self._dash_reminders = ctk.CTkScrollableFrame(
-            parent, fg_color="transparent", height=220)
-        self._dash_reminders.pack(fill="x", padx=8, pady=(4, 10))
+        # ── Pane 3: AI Search ─────────────────────────────────────────────
+        search_pane = ctk.CTkFrame(paned, fg_color="transparent")
+
+        # Search header
+        sh = ctk.CTkFrame(search_pane, fg_color="transparent")
+        sh.pack(fill="x", padx=8, pady=(6, 4))
+        ctk.CTkLabel(sh, text="🔍  AI Search",
+                     font=ctk.CTkFont(size=11, weight="bold"),
+                     text_color="#5d8dbb").pack(side="left")
+
+        # Search input row
+        sinput_row = ctk.CTkFrame(search_pane, fg_color="transparent")
+        sinput_row.pack(fill="x", padx=6, pady=(0, 4))
+        self._search_var = ctk.StringVar()
+        self._search_entry = ctk.CTkEntry(
+            sinput_row, textvariable=self._search_var,
+            placeholder_text="Search notes & reminders…",
+            font=ctk.CTkFont(size=11),
+        )
+        self._search_entry.pack(side="left", fill="x", expand=True)
+        self._search_entry.bind("<Return>", lambda e: self._do_text_search())
+        ctk.CTkButton(
+            sinput_row, text="⏎", width=32,
+            font=ctk.CTkFont(size=13),
+            command=self._do_text_search,
+        ).pack(side="left", padx=(4, 0))
+
+        # Summary label
+        self._search_summary = ctk.CTkLabel(
+            search_pane, text="", text_color="#5d8dbb",
+            font=ctk.CTkFont(size=11), anchor="w",
+        )
+        self._search_summary.pack(anchor="w", padx=8)
+
+        # Results area
+        self._search_results = ctk.CTkScrollableFrame(search_pane, fg_color="transparent")
+        self._search_results.pack(fill="both", expand=True, padx=4, pady=(2, 4))
+
+        paned.add(search_pane, minsize=120)
 
         self.refresh_dashboard()
 
@@ -252,21 +300,21 @@ class VoicePanel(ctk.CTkFrame):
         notes = list_notes("", sort_by="updated_at", ascending=False)[:5]
         if not notes:
             ctk.CTkLabel(self._dash_notes, text="No notes yet.",
-                         text_color="gray", font=ctk.CTkFont(size=12)).pack(pady=10)
+                         text_color="gray", font=ctk.CTkFont(size=11)).pack(pady=8)
             return
         for note in notes:
             card = ctk.CTkFrame(self._dash_notes, fg_color="#1e2235", corner_radius=8)
-            card.pack(fill="x", pady=3, padx=2)
+            card.pack(fill="x", pady=2, padx=2)
             ctk.CTkLabel(
                 card, text=note["title"] or "(untitled)", anchor="w",
-                font=ctk.CTkFont(size=12, weight="bold"),
-            ).pack(anchor="w", padx=8, pady=(6, 1))
-            snippet = (note.get("content") or "").strip()[:55]
+                font=ctk.CTkFont(size=11, weight="bold"),
+            ).pack(anchor="w", padx=8, pady=(5, 1))
+            snippet = (note.get("content") or "").strip()[:50]
             if snippet:
                 ctk.CTkLabel(
                     card, text=snippet, anchor="w",
-                    text_color="#888888", font=ctk.CTkFont(size=11), wraplength=240,
-                ).pack(anchor="w", padx=8, pady=(0, 6))
+                    text_color="#888888", font=ctk.CTkFont(size=10), wraplength=230,
+                ).pack(anchor="w", padx=8, pady=(0, 5))
 
     def _refresh_dash_reminders(self):
         from core.reminders import list_reminders
@@ -276,23 +324,108 @@ class VoicePanel(ctk.CTkFrame):
         reminders = list_reminders(include_done=False, sort_by="due_at", ascending=True)[:5]
         if not reminders:
             ctk.CTkLabel(self._dash_reminders, text="No upcoming reminders.",
-                         text_color="gray", font=ctk.CTkFont(size=12)).pack(pady=10)
+                         text_color="gray", font=ctk.CTkFont(size=11)).pack(pady=8)
             return
         now = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
         for r in reminders:
             is_overdue = r["due_at"] < now
             card = ctk.CTkFrame(self._dash_reminders, fg_color="#1e2235", corner_radius=8)
-            card.pack(fill="x", pady=3, padx=2)
+            card.pack(fill="x", pady=2, padx=2)
             ctk.CTkLabel(
                 card, text=r["title"], anchor="w",
-                font=ctk.CTkFont(size=12, weight="bold"),
-            ).pack(anchor="w", padx=8, pady=(6, 1))
-            due_str = r["due_at"][:16]
+                font=ctk.CTkFont(size=11, weight="bold"),
+            ).pack(anchor="w", padx=8, pady=(5, 1))
             color = "#e74c3c" if is_overdue else "#5d8dbb"
             ctk.CTkLabel(
-                card, text=("⚠ Overdue · " if is_overdue else "🕐 ") + due_str,
-                anchor="w", text_color=color, font=ctk.CTkFont(size=11),
-            ).pack(anchor="w", padx=8, pady=(0, 6))
+                card,
+                text=("⚠ Overdue · " if is_overdue else "🕐 ") + r["due_at"][:16],
+                anchor="w", text_color=color, font=ctk.CTkFont(size=10),
+            ).pack(anchor="w", padx=8, pady=(0, 5))
+
+    # ── search ────────────────────────────────────────────────────────────
+
+    def _do_text_search(self):
+        query = self._search_var.get().strip()
+        if query:
+            self._run_search(query)
+
+    def _do_voice_search(self, query: str):
+        self._search_var.set(query)
+        self._set_status(f"Searching for "{query}"…", "#5d8dbb")
+        self._run_search(query)
+
+    def _run_search(self, query: str):
+        from core.search import search_all
+        results = search_all(query)
+        self._show_search_results(query, results)
+
+    def _show_search_results(self, query: str, results: list):
+        for w in self._search_results.winfo_children():
+            w.destroy()
+
+        count = len(results)
+        if count == 0:
+            self._search_summary.configure(text=f"No results for \"{query}\".")
+            ctk.CTkLabel(self._search_results, text="Nothing found.",
+                         text_color="gray", font=ctk.CTkFont(size=11)).pack(pady=8)
+            return
+
+        types = {}
+        for r in results:
+            types[r["type"]] = types.get(r["type"], 0) + 1
+        summary_parts = [f"{v} {k}{'s' if v > 1 else ''}" for k, v in types.items()]
+        self._search_summary.configure(
+            text=f"Found {count} result{'s' if count > 1 else ''}: " + ", ".join(summary_parts) + "."
+        )
+
+        _IMP_COLORS = {"Low": "#777777", "Normal": "#aaaaaa", "High": "#e67e22", "Urgent": "#e74c3c"}
+        _TYPE_ICONS = {"note": "📝", "reminder": "🔔"}
+
+        for item in results:
+            card = ctk.CTkFrame(self._search_results, fg_color="#1e2235", corner_radius=8,
+                                cursor="hand2")
+            card.pack(fill="x", pady=3, padx=2)
+
+            hdr = ctk.CTkFrame(card, fg_color="transparent")
+            hdr.pack(fill="x", padx=8, pady=(6, 2))
+            icon = _TYPE_ICONS.get(item["type"], "•")
+            ctk.CTkLabel(hdr, text=f"{icon} {item['title']}", anchor="w",
+                         font=ctk.CTkFont(size=11, weight="bold")).pack(side="left")
+            imp = item.get("importance", "Normal")
+            if imp != "Normal":
+                ctk.CTkLabel(hdr, text=imp, text_color=_IMP_COLORS.get(imp, "gray"),
+                             font=ctk.CTkFont(size=10)).pack(side="right")
+
+            if item.get("date"):
+                ctk.CTkLabel(card, text=item["date"], anchor="w",
+                             text_color="#5d8dbb", font=ctk.CTkFont(size=10)).pack(
+                    anchor="w", padx=8)
+
+            if item.get("snippet"):
+                ctk.CTkLabel(card, text=item["snippet"][:60], anchor="w",
+                             text_color="#888888", font=ctk.CTkFont(size=10),
+                             wraplength=230).pack(anchor="w", padx=8, pady=(1, 6))
+            else:
+                ctk.CTkFrame(card, height=4, fg_color="transparent").pack()
+
+            item_copy = dict(item)
+            card.bind("<Button-1>", lambda e, it=item_copy: self._open_result(it))
+            for child in card.winfo_children():
+                child.bind("<Button-1>", lambda e, it=item_copy: self._open_result(it))
+
+    def _open_result(self, item: dict):
+        if item["type"] == "note" and self._on_fill_note:
+            from core.notes import get_note
+            note = get_note(item["id"])
+            if note:
+                self._on_fill_note({"title": note["title"],
+                                    "details": note["content"],
+                                    "importance": note.get("importance", "Normal"),
+                                    "note_date": note.get("note_date", ""),
+                                    "tags": [t.strip() for t in (note.get("tags") or "").split(",") if t.strip()]},
+                                   note.get("content", ""))
+        elif item["type"] == "reminder" and self._on_fill_reminder:
+            self._on_fill_reminder({"title": item["title"]})
 
     # ── recording ─────────────────────────────────────────────────────────
 
@@ -314,13 +447,13 @@ class VoicePanel(ctk.CTkFrame):
             self._set_status(f"Microphone error: {exc}", "#e74c3c")
             return
         self._mic_state = "recording"
-        self._set_status("Listening… speak now", "#e74c3c")
+        self._set_status("Listening...", "#e74c3c")
         self._set_preview("")
         self._animate_bars()
 
     def _stop(self):
         self._mic_state = "processing"
-        self._set_status("Transcribing with local Whisper…", "gray")
+        self._set_status("Processing...", "gray")
         self._progress.pack(pady=(0, 6))
         self._progress.start()
         audio_path = self._recorder.stop()
@@ -330,6 +463,7 @@ class VoicePanel(ctk.CTkFrame):
         self._progress.stop()
         self._progress.pack_forget()
         self._mic_state = "idle"
+        self._set_status("Press to talk to Aria", "#5d8dbb")
 
     # ── pipeline ──────────────────────────────────────────────────────────
 
@@ -374,8 +508,13 @@ class VoicePanel(ctk.CTkFrame):
                 action = _rule_based_intent(text)
 
         self._last_action = action
-        self._ui(lambda: self._set_status("Filling preview…", "gray"))
-        self._ui(lambda: (self._re_enable_mic(), self._show_result(text, action)))
+        intent = action.get("intent", "unknown")
+        if intent == "search":
+            query = action.get("fields", {}).get("search_query", text)
+            self._ui(lambda q=query: (self._re_enable_mic(), self._do_voice_search(q)))
+        else:
+            self._ui(lambda: self._set_status("Filling preview…", "gray"))
+            self._ui(lambda: (self._re_enable_mic(), self._show_result(text, action)))
 
     # ── result panel ──────────────────────────────────────────────────────
 
@@ -548,13 +687,13 @@ class VoicePanel(ctk.CTkFrame):
     def _re_record(self):
         self._hide_result()
         self._set_preview("")
-        self._set_status("Ready — press the mic to speak again", "gray")
+        self._set_status("Press to talk to Aria", "#5d8dbb")
         self._start()
 
     def _cancel(self):
         self._hide_result()
         self._set_preview("")
-        self._set_status("Cancelled.", "gray")
+        self._set_status("Press to talk to Aria", "#5d8dbb")
 
     # ── execution ─────────────────────────────────────────────────────────
 
