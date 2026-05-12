@@ -28,24 +28,20 @@ class App(ctk.CTk):
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
 
-        # Logo
-        ctk.CTkLabel(
+        # Company logo placeholder
+        logo_frame = ctk.CTkFrame(
             self.sidebar,
-            text=_ARIA_ICON,
-            font=ctk.CTkFont(size=26, weight="bold"),
-            text_color="#3B8ED0",
-        ).pack(pady=(20, 0))
+            width=48, height=48,
+            corner_radius=12,
+            fg_color="#2563eb",
+        )
+        logo_frame.pack(pady=(20, 10))
+        logo_frame.pack_propagate(False)
         ctk.CTkLabel(
-            self.sidebar,
-            text="Aria",
-            font=ctk.CTkFont(size=11, weight="bold"),
-        ).pack(pady=(0, 2))
-        ctk.CTkLabel(
-            self.sidebar,
-            text="Organizer",
-            font=ctk.CTkFont(size=9),
-            text_color="#5d8dbb",
-        ).pack(pady=(0, 10))
+            logo_frame,
+            text="🏢",
+            font=ctk.CTkFont(size=24),
+        ).place(relx=0.5, rely=0.5, anchor="center")
 
         ctk.CTkFrame(self.sidebar, height=1, fg_color="#333344").pack(
             fill="x", padx=10, pady=(0, 8)
