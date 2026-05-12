@@ -13,6 +13,8 @@ from services.intent_parser import parse_intent as claude_parse_intent
 from core.parser import parse_datetime
 from core.notes import create_note, IMPORTANCE_LEVELS
 from core.reminders import create_reminder
+from ui.aria_avatar import AriaAvatar
+from core.briefing import generate_greeting, get_briefing_data, get_briefing_bullets
 
 CONFIDENCE_AUTO   = 0.85
 CONFIDENCE_REVIEW = 0.60
@@ -79,12 +81,7 @@ class VoicePanel(ctk.CTkFrame):
         self._last_action: dict | None = None
         self._last_transcription: str  = ""
         self._autosave_var = ctk.BooleanVar(value=False)
-        self._mic_state    = "idle"    # idle | recording | processing
-        self._pulse_step   = 0
-        self._ring_phase   = 0
-        self._arc_angle    = 0
         self._build()
-        self._animate_mic()
 
     # ── layout ────────────────────────────────────────────────────────────
 
@@ -101,67 +98,41 @@ class VoicePanel(ctk.CTkFrame):
         dash.pack_propagate(False)
         self._build_dashboard(dash)
 
-        # ── App name + subtitle ──
-        hdr = ctk.CTkFrame(left, fg_color="transparent")
-        hdr.pack(fill="x", padx=20, pady=(20, 2))
-        ctk.CTkLabel(
-            hdr, text="✦  Aria",
-            font=ctk.CTkFont(size=26, weight="bold"),
-            text_color="#3B8ED0",
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            hdr, text="Your Personal Organizer",
-            text_color="#5d8dbb", font=ctk.CTkFont(size=14),
-        ).pack(anchor="w", pady=(2, 0))
-        ctk.CTkLabel(
-            hdr,
-            text='e.g. "Urgent reminder — meeting with Yaseen tomorrow at 10 PM"',
-            text_color="gray", font=ctk.CTkFont(size=12),
-        ).pack(anchor="w", pady=(4, 0))
+        # ── Avatar + Greeting row ──────────────────────────────────────────
+        top_row = ctk.CTkFrame(left, fg_color="transparent")
+        top_row.pack(fill="x", padx=16, pady=(14, 6))
+
+        # Aria avatar (click = toggle mic)
+        self._avatar = AriaAvatar(top_row, on_click=self._toggle)
+        self._avatar.pack(side="left")
+
+        # Greeting + daily briefing (right of avatar)
+        greet_wrap = ctk.CTkFrame(top_row, fg_color="transparent")
+        greet_wrap.pack(side="left", fill="both", expand=True, padx=(16, 0))
+
+        self._greeting_lbl = ctk.CTkLabel(
+            greet_wrap, text="",
+            font=ctk.CTkFont(size=14), text_color="#aaaacc",
+            justify="left", anchor="w", wraplength=280,
+        )
+        self._greeting_lbl.pack(anchor="w", pady=(10, 8))
+
+        self._bullets_frame = ctk.CTkFrame(greet_wrap, fg_color="transparent")
+        self._bullets_frame.pack(anchor="w", fill="x")
+
+        self._refresh_greeting()
 
         # ── Status banner ──
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
         banner  = ctk.CTkFrame(left, fg_color="#1a1e2a", corner_radius=6)
-        banner.pack(fill="x", padx=20, pady=(10, 0))
+        banner.pack(fill="x", padx=16, pady=(8, 0))
         ctk.CTkLabel(
             banner,
-            text=("🎤 Speech recognition: local Whisper  ·  🤖 Understanding: Claude AI"
-                  if has_key else
-                  "⚠  ANTHROPIC_API_KEY missing — add it to .env.  Rule-based fallback active."),
+            text=("🎤 Whisper  ·  🤖 Claude AI" if has_key else
+                  "⚠  ANTHROPIC_API_KEY missing — rule-based fallback active."),
             text_color="#5d8dbb" if has_key else "#e07b3c",
-            font=ctk.CTkFont(size=12),
-        ).pack(padx=12, pady=7, anchor="w")
-
-        # ── Mic icon canvas ──
-        mic_outer = ctk.CTkFrame(left, fg_color="#1a1e2a", corner_radius=10)
-        mic_outer.pack(pady=(18, 4))
-
-        self._mic_canvas = tk.Canvas(
-            mic_outer, width=_CS, height=_CS,
-            bg="#1a1e2a", highlightthickness=0, cursor="hand2",
-        )
-        self._mic_canvas.pack(padx=16, pady=16)
-        self._mic_canvas.bind("<Button-1>", lambda e: self._toggle())
-
-        # Draw elements back-to-front
-        self._ring_ids = []
-        for _ in range(3):
-            rid = self._mic_canvas.create_oval(0, 0, 0, 0, outline="#e74c3c", width=2)
-            self._ring_ids.append(rid)
-        m = _CX - _BR - 10
-        self._proc_arc = self._mic_canvas.create_arc(
-            m, m, _CS - m, _CS - m,
-            start=0, extent=110, outline="#3B8ED0", width=3, style="arc",
-        )
-        self._mic_canvas.itemconfig(self._proc_arc, state="hidden")
-        self._mic_bg = self._mic_canvas.create_oval(
-            _CX - _BR, _CY - _BR, _CX + _BR, _CY + _BR,
-            fill="#2563eb", outline="", width=0,
-        )
-        self._mic_label = self._mic_canvas.create_text(
-            _CX, _CY, text="🎙", font=("Segoe UI Emoji", 26),
-        )
-        _ToolTip(self._mic_canvas, "Press to start speaking")
+            font=ctk.CTkFont(size=11),
+        ).pack(padx=12, pady=6, anchor="w")
 
         # ── Waveform bars ──
         wave_wrap = ctk.CTkFrame(left, fg_color="transparent")
@@ -290,6 +261,7 @@ class VoicePanel(ctk.CTkFrame):
         self.refresh_dashboard()
 
     def refresh_dashboard(self):
+        self._refresh_greeting()
         self._refresh_dash_notes()
         self._refresh_dash_reminders()
 
@@ -446,13 +418,13 @@ class VoicePanel(ctk.CTkFrame):
         except Exception as exc:
             self._set_status(f"Microphone error: {exc}", "#e74c3c")
             return
-        self._mic_state = "recording"
+        self._avatar.set_state("listening")
         self._set_status("Listening...", "#e74c3c")
         self._set_preview("")
         self._animate_bars()
 
     def _stop(self):
-        self._mic_state = "processing"
+        self._avatar.set_state("processing")
         self._set_status("Processing...", "gray")
         self._progress.pack(pady=(0, 6))
         self._progress.start()
@@ -462,7 +434,7 @@ class VoicePanel(ctk.CTkFrame):
     def _re_enable_mic(self):
         self._progress.stop()
         self._progress.pack_forget()
-        self._mic_state = "idle"
+        self._avatar.set_state("idle")
         self._set_status("Press to talk to Aria", "#5d8dbb")
 
     # ── pipeline ──────────────────────────────────────────────────────────
@@ -734,42 +706,25 @@ class VoicePanel(ctk.CTkFrame):
                     llm_intent=llm, importance=imp, note_date=note_date)
         return f'Note: "{title}"'
 
-    # ── mic + waveform animation ──────────────────────────────────────────
+    # ── greeting ──────────────────────────────────────────────────────────
 
-    def _animate_mic(self):
-        if not self.winfo_exists():
-            return
-        if self._mic_state == "idle":
-            self._pulse_step += 1
-            color = "#2563eb" if (self._pulse_step // 5) % 2 == 0 else "#1d4ed8"
-            self._mic_canvas.itemconfig(self._mic_bg, fill=color)
-            for rid in self._ring_ids:
-                self._mic_canvas.coords(rid, 0, 0, 0, 0)
-            self._mic_canvas.itemconfig(self._proc_arc, state="hidden")
+    def _refresh_greeting(self):
+        try:
+            data    = get_briefing_data()
+            greeting = generate_greeting(data)
+            bullets  = get_briefing_bullets(data)
+            self._greeting_lbl.configure(text=greeting)
+            for w in self._bullets_frame.winfo_children():
+                w.destroy()
+            for b in bullets:
+                ctk.CTkLabel(
+                    self._bullets_frame, text=b, anchor="w",
+                    font=ctk.CTkFont(size=12), text_color="#777799",
+                ).pack(anchor="w", pady=1)
+        except Exception:
+            self._greeting_lbl.configure(text="Ready when you are.")
 
-        elif self._mic_state == "recording":
-            self._ring_phase += 2
-            level = self._recorder.current_level
-            for i, rid in enumerate(self._ring_ids):
-                phase = (self._ring_phase + i * 10) % 30
-                r     = _BR + 10 + int(phase / 30 * 18)
-                alpha = 1.0 - phase / 30
-                rv    = int(alpha * 200 + (1 - alpha) * 40)
-                self._mic_canvas.coords(rid, _CX-r, _CY-r, _CX+r, _CY+r)
-                self._mic_canvas.itemconfig(rid, outline=f"#{rv:02x}1515")
-            r_val = min(160 + int(level * 50), 210)
-            self._mic_canvas.itemconfig(self._mic_bg, fill=f"#{r_val:02x}1818")
-            self._mic_canvas.itemconfig(self._proc_arc, state="hidden")
-
-        elif self._mic_state == "processing":
-            for rid in self._ring_ids:
-                self._mic_canvas.coords(rid, 0, 0, 0, 0)
-            self._arc_angle = (self._arc_angle + 9) % 360
-            self._mic_canvas.itemconfig(self._proc_arc,
-                                        start=self._arc_angle, state="normal")
-            self._mic_canvas.itemconfig(self._mic_bg, fill="#444455")
-
-        self.after(50, self._animate_mic)
+    # ── waveform animation ────────────────────────────────────────────────
 
     def _animate_bars(self):
         if not self.winfo_exists():

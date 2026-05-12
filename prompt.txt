@@ -1,159 +1,235 @@
-Modify the app layout and voice interaction workflow with the following changes.
+Modify the app so that Aria feels alive, emotionally engaging, and more like a real personal organizer companion instead of just a utility tool.
 
 Goal:
-Improve the voice-first experience and add a dedicated AI search/results area.
+When the app loads, Aria should greet the user, visually appear as a friendly AI companion, and proactively engage with the user based on reminders, meetings, notes, unfinished tasks, and stored information.
 
-1. Rename text below microphone icon
+The experience should feel:
+- warm
+- intelligent
+- helpful
+- lightly conversational
+- motivating
+- personal but not creepy
+- productivity-focused
 
-Currently there is text below the microphone icon.
+1. Add animated Aria character/avatar
 
-Rename it to exactly:
-
-“Press to talk to Aria”
+When the app launches, display a cartoon-style robot/AI face representing Aria.
 
 Requirements:
-- centered under the microphone icon
-- visually clean and modern
-- larger and easier to read
-- should fit the new “Your Personal Organizer” branding
-- use friendly wording and spacing
+- modern and friendly design
+- not childish
+- expressive but lightweight
+- should fit the premium productivity aesthetic
+- should work in dark and light mode
 
-Optional:
-- subtle fade/pulse animation while idle
-- text can change dynamically while recording:
-  - “Listening...”
-  - “Processing...”
-  - “Ready”
+Behavior:
+- idle blinking or subtle movement
+- gentle pulse/glow while speaking/thinking
+- listening animation when voice mode is active
+- expression changes slightly depending on context:
+  - happy
+  - neutral
+  - thinking
+  - reminder/warning
 
-2. Split the right-side window into 3 sections
+Be creative.
 
-Currently the right-side area contains notes/reminders.
+Possible inspirations:
+- futuristic assistant
+- minimal robot face
+- holographic AI orb with eyes
+- floating AI avatar
+- subtle animated assistant portrait
 
-Modify the layout so the right side is vertically split into 3 adjustable sections.
+Do NOT make it look like a gaming mascot or cartoon toy.
 
-Top section:
-- existing Notes area
+2. Add startup greeting experience
 
-Middle section:
-- existing Reminders area
+When the app opens, Aria should greet the user dynamically.
 
-Bottom section:
-- NEW AI Search / Assistant Results area
+Examples:
+- “Welcome back.”
+- “You have 4 reminders coming up this week.”
+- “You had 3 meetings yesterday. Hope they went well.”
+- “You marked 5 tasks as done this week. Nice progress.”
+- “One of your notes mentioned buying a watch. Did you get it?”
+- “You have an important reminder tomorrow morning.”
+- “You haven’t reviewed your Yemen notes in a while.”
 
-Use adjustable split panes so users can resize all three sections.
+The greeting should:
+- be generated dynamically from stored app data
+- feel natural and conversational
+- vary from day to day
+- avoid repetitive robotic phrasing
 
-If using PySide/PyQt, use nested QSplitter layouts or equivalent.
+3. Context-aware engagement system
 
-3. Add AI Search / Assistant Results section
+Create a lightweight “Aria engagement engine”.
 
-The new bottom section should support:
-- text search
-- voice-triggered search
-- assistant responses
-- intelligent retrieval results
+Aria should be able to:
+- summarize upcoming reminders
+- mention overdue tasks
+- reference unfinished items
+- mention recent meetings
+- recall relevant notes
+- encourage productivity
+- gently follow up on personal notes/tasks
 
-Purpose:
-When the user says things like:
-- “Can you find my note about Yemen?”
-- “Find reminders about DIEM.”
-- “Search meeting notes about Lebanon.”
-- “Show my urgent reminders.”
-- “Find notes mentioning Yaseen.”
+Examples:
+- “You still have 2 urgent reminders not completed.”
+- “There’s a recurring meeting tomorrow afternoon.”
+- “You created a note about improving your report workflow.”
+- “You haven’t opened your Lebanon meeting notes recently.”
 
-the results should appear in this new bottom search/results window.
+Important:
+- keep interactions concise
+- no long paragraphs
+- avoid sounding intrusive or creepy
+- avoid over-personalization
 
-4. Search area features
+4. Add “Daily Briefing” panel
 
-The bottom search/results section should include:
+Add a small “Daily Briefing” or “Aria Update” section near the assistant avatar.
 
-- search input box
-- microphone icon for voice search
-- results list area
-- assistant response area if applicable
-- loading/progress indicator while searching
+This section can contain:
+- today’s reminders
+- overdue items
+- meeting count
+- upcoming deadlines
+- motivational/contextual messages
+- recent activity summary
 
-The section should support:
-- typing search queries
-- voice search queries
-- displaying matching notes/reminders/meetings
-- clickable results
-- opening selected items in the editor/view
+Example:
+--------------------------------
+Good morning.
 
-5. Voice-triggered search behavior
+• 3 reminders today
+• 1 overdue task
+• 2 meetings this afternoon
+• Last note edited: Yemen Brief
+--------------------------------
 
-If the user speaks commands beginning with:
-- “find”
-- “search”
-- “show”
-- “can you find”
-- “look for”
+5. Voice and animation integration
 
-then Aria should classify this as a search intent.
+When Aria is:
+- listening → avatar animates
+- processing → thinking animation
+- responding → subtle glow/movement
+- idle → calm breathing/blinking animation
 
-Instead of opening create-reminder forms:
-- display results directly in the bottom search/results section.
+Keep animations lightweight and responsive.
 
-6. Search result display
+6. Add intelligent conversational prompts
 
-Results should display:
-- title
-- type (note/reminder/meeting)
-- date
-- importance if available
-- source if imported from Microsoft
-- small preview/snippet
+Aria should occasionally ask lightweight contextual questions.
 
-Clicking a result should:
-- open/select the full item in the appropriate section/editor.
+Examples:
+- “Did you finish the report you mentioned yesterday?”
+- “Do you want me to create a reminder for that?”
+- “You seem to have several overdue tasks this week.”
+- “Would you like to review your meeting notes?”
 
-7. Search result styling
+Important:
+- these should be occasional
+- not spammy
+- configurable in settings
+- user can disable proactive suggestions
 
-Style the search/results section to feel like an AI assistant panel.
+7. Add settings for personality behavior
 
-Possible features:
-- assistant-style cards
-- grouped results
-- highlighted keywords
-- assistant summary text like:
-  “I found 4 reminders related to DIEM.”
+Add settings such as:
+- Enable Aria greetings
+- Enable proactive suggestions
+- Greeting frequency
+- Animation intensity
+- Quiet mode
+- Minimal mode
 
-Keep it lightweight and responsive.
+8. Data awareness
 
-8. Preserve existing functionality
+Aria can use:
+- reminders
+- overdue reminders
+- notes
+- meeting notes
+- Microsoft calendar imports
+- recurring reminders
+- Done history
+- importance/priority
+
+to generate contextual messages.
+
+Do NOT:
+- expose sensitive data unnecessarily
+- send these summaries to external APIs unless already part of the existing Claude workflow
+- sound invasive
+
+9. Optional lightweight memory layer
+
+If feasible, add lightweight contextual tracking such as:
+- recently mentioned goals
+- frequently referenced topics
+- unfinished recurring themes
+
+Examples:
+- “You’ve mentioned AI research several times this week.”
+- “You still have unfinished reminders related to reports.”
+
+Keep this simple and local.
+
+10. UI integration
+
+The Aria avatar + greeting should appear:
+- on startup/dashboard/home screen
+- near the voice interaction area
+- in a visually prominent but non-intrusive way
+
+The UI should feel:
+- modern
+- assistant-driven
+- alive
+- clean
+
+11. Preserve existing functionality
 
 Do not remove or break:
-- notes
+- local Whisper transcription
+- Claude API parsing
 - reminders
 - recurring reminders
-- reminder popups
-- voice transcription
-- Claude API parsing
+- notes
+- meeting notes
 - Microsoft sync
 - sorting
-- adjustable panes
-- confirmation workflow
+- adjustable layouts
+- reminder popups
+- voice-first workflow
 
-9. Tests
+12. Tests
 
 Add/update tests for:
-- “Press to talk to Aria” text appears
-- right-side layout splits into 3 sections
-- split panes are adjustable
-- search section appears correctly
-- voice search commands route to search results area
-- search results display correctly
-- clicking search result opens the correct item
-- typing search queries works
-- voice search microphone works
+- Aria avatar loads successfully
+- greeting panel appears on startup
+- reminder summaries generate correctly
+- overdue reminders appear in briefing
+- meetings summary works
+- proactive prompts can be enabled/disabled
+- animations trigger during listening/processing
+- contextual messages do not crash when data is missing
 
-10. README update
+13. README update
 
 Update README with:
-- new search/results panel
-- voice search examples
-- AI assistant search workflow
-- adjustable 3-pane layout explanation
+- Aria assistant overview
+- Daily Briefing feature
+- proactive suggestion system
+- privacy notes
+- personalization settings
 
-Implementation rule:
-Patch the existing GUI cleanly without rewriting the entire app.
-Keep the UI modern, voice-first, and productivity-focused.
+Implementation rules:
+- Keep the experience lightweight and responsive.
+- Avoid making the app feel childish or gimmicky.
+- Focus on a premium “AI personal organizer” experience.
+- Keep all contextual reasoning local unless already using Claude parsing intentionally.
+- Patch the current architecture cleanly without rewriting the app.
