@@ -86,7 +86,7 @@ class VoicePanel(ctk.CTkFrame):
     # ── layout ────────────────────────────────────────────────────────────
 
     def _build(self):
-        # ── Top-level horizontal split: voice left, dashboard right ──
+        # ── Outer horizontal split: main left | dashboard right ──
         hbox = ctk.CTkFrame(self, fg_color="transparent")
         hbox.pack(fill="both", expand=True)
 
@@ -94,98 +94,109 @@ class VoicePanel(ctk.CTkFrame):
         left.pack(side="left", fill="both", expand=True)
 
         dash = ctk.CTkFrame(hbox, width=290, fg_color="#13162a", corner_radius=12)
-        dash.pack(side="right", fill="y", padx=(0, 14), pady=14)
+        dash.pack(side="right", fill="y", padx=(0, 12), pady=12)
         dash.pack_propagate(False)
         self._build_dashboard(dash)
 
-        # ── Avatar + Greeting row ──────────────────────────────────────────
-        top_row = ctk.CTkFrame(left, fg_color="transparent")
-        top_row.pack(fill="x", padx=16, pady=(14, 6))
-
-        # Aria avatar (click = toggle mic)
-        self._avatar = AriaAvatar(top_row, on_click=self._toggle)
-        self._avatar.pack(side="left")
-
-        # Greeting + daily briefing (right of avatar)
-        greet_wrap = ctk.CTkFrame(top_row, fg_color="transparent")
-        greet_wrap.pack(side="left", fill="both", expand=True, padx=(16, 0))
-
-        self._greeting_lbl = ctk.CTkLabel(
-            greet_wrap, text="",
-            font=ctk.CTkFont(size=14), text_color="#aaaacc",
-            justify="left", anchor="w", wraplength=280,
-        )
-        self._greeting_lbl.pack(anchor="w", pady=(10, 8))
-
-        self._bullets_frame = ctk.CTkFrame(greet_wrap, fg_color="transparent")
-        self._bullets_frame.pack(anchor="w", fill="x")
-
-        self._refresh_greeting()
-
-        # ── Status banner ──
-        has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
-        banner  = ctk.CTkFrame(left, fg_color="#1a1e2a", corner_radius=6)
-        banner.pack(fill="x", padx=16, pady=(8, 0))
-        ctk.CTkLabel(
-            banner,
-            text=("🎤 Whisper  ·  🤖 Claude AI" if has_key else
-                  "⚠  ANTHROPIC_API_KEY missing — rule-based fallback active."),
-            text_color="#5d8dbb" if has_key else "#e07b3c",
-            font=ctk.CTkFont(size=11),
-        ).pack(padx=12, pady=6, anchor="w")
-
-        # ── Waveform bars ──
-        wave_wrap = ctk.CTkFrame(left, fg_color="transparent")
-        wave_wrap.pack(pady=(4, 6))
-        self._wave_canvas = tk.Canvas(
-            wave_wrap, width=_CAN_W, height=_CAN_H,
-            bg="#1a1e2a", highlightthickness=0,
-        )
-        self._wave_canvas.pack()
-        self._bar_ids: list[tuple] = []
-        for i in range(_NUM_BARS):
-            x1  = i * (_BAR_W + _BAR_GAP) + 2
-            x2  = x1 + _BAR_W
-            bid = self._wave_canvas.create_rectangle(
-                x1, _CAN_H - 4, x2, _CAN_H, fill="#2d4a6b", width=0
-            )
-            self._bar_ids.append((bid, x1, x2))
-
-        # ── Progress bar (hidden until processing) ──
-        self._progress = ctk.CTkProgressBar(left, width=300, mode="indeterminate")
-
-        # ── Status label ──
-        self._status = ctk.CTkLabel(
-            left, text="Press to talk to Aria",
-            text_color="#5d8dbb", font=ctk.CTkFont(size=15, weight="bold"),
-        )
-        self._status.pack(pady=(0, 10))
-
-        # ── Transcription preview ──
-        ctk.CTkLabel(left, text="Transcription:", anchor="w",
-                     font=ctk.CTkFont(size=13)).pack(anchor="w", padx=20, pady=(4, 2))
-        self._preview = ctk.CTkTextbox(
-            left, height=62, wrap="word", state="disabled",
-            font=ctk.CTkFont(size=13),
-        )
-        self._preview.pack(fill="x", padx=20, pady=(0, 8))
-
-        # ── Result panel (packed on demand into left) ──
-        self._result_panel = ctk.CTkFrame(left, corner_radius=8)
-
-        # ── Auto-save toggle ──
+        # ── Bottom bar: auto-save + status (packed bottom-first) ──
         bottom = ctk.CTkFrame(left, fg_color="transparent")
-        bottom.pack(side="bottom", fill="x", padx=20, pady=(0, 16))
+        bottom.pack(side="bottom", fill="x", padx=16, pady=(0, 12))
         ctk.CTkSwitch(
             bottom,
             text="Auto-save high-confidence voice commands",
             variable=self._autosave_var,
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(size=11),
             onvalue=True, offvalue=False,
         ).pack(side="left")
 
-        # Populate dashboard after all widgets exist
-        self.after(100, self.refresh_dashboard)
+        # ── Compact voice bar: waveform + progress + transcription ──
+        voice_bar = ctk.CTkFrame(left, fg_color="#111520", corner_radius=8)
+        voice_bar.pack(side="bottom", fill="x", padx=16, pady=(0, 6))
+
+        self._status = ctk.CTkLabel(
+            voice_bar, text="Press to talk to Aria",
+            text_color="#5d8dbb", font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        )
+        self._status.pack(anchor="w", padx=14, pady=(8, 2))
+
+        self._progress = ctk.CTkProgressBar(voice_bar, width=300, mode="indeterminate")
+
+        wave_wrap = ctk.CTkFrame(voice_bar, fg_color="transparent")
+        wave_wrap.pack(fill="x", padx=14, pady=(2, 4))
+        self._wave_canvas = tk.Canvas(
+            wave_wrap, width=_CAN_W, height=_CAN_H,
+            bg="#111520", highlightthickness=0,
+        )
+        self._wave_canvas.pack(side="left")
+        self._bar_ids: list[tuple] = []
+        for idx in range(_NUM_BARS):
+            x1  = idx * (_BAR_W + _BAR_GAP) + 2
+            x2  = x1 + _BAR_W
+            bid = self._wave_canvas.create_rectangle(
+                x1, _CAN_H - 4, x2, _CAN_H, fill="#2d4a6b", width=0,
+            )
+            self._bar_ids.append((bid, x1, x2))
+
+        ctk.CTkLabel(voice_bar, text="Transcription:", anchor="w",
+                     font=ctk.CTkFont(size=11),
+                     text_color="gray").pack(anchor="w", padx=14, pady=(4, 0))
+        self._preview = ctk.CTkTextbox(
+            voice_bar, height=48, wrap="word", state="disabled",
+            font=ctk.CTkFont(size=11),
+        )
+        self._preview.pack(fill="x", padx=14, pady=(2, 8))
+
+        # ── Result panel (packed on demand above voice bar) ──
+        self._result_panel = ctk.CTkFrame(left, corner_radius=8)
+
+        # ── Main hero area: avatar left + content right ──
+        hero = ctk.CTkFrame(left, fg_color="transparent")
+        hero.pack(fill="both", expand=True, padx=12, pady=(12, 6))
+
+        # Large Aria avatar (clickable = mic toggle)
+        self._avatar = AriaAvatar(hero, on_click=self._toggle)
+        self._avatar.pack(side="left", anchor="n", pady=(4, 0))
+
+        # Content panel right of avatar
+        content = ctk.CTkFrame(hero, fg_color="transparent")
+        content.pack(side="left", fill="both", expand=True, padx=(16, 0))
+
+        # Aria name + subtitle
+        ctk.CTkLabel(
+            content, text="✦  Aria",
+            font=ctk.CTkFont(size=22, weight="bold"),
+            text_color="#3B8ED0", anchor="w",
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            content, text="Your Personal Organizer",
+            font=ctk.CTkFont(size=12), text_color="#5d8dbb", anchor="w",
+        ).pack(anchor="w", pady=(0, 6))
+
+        # Greeting label
+        self._greeting_lbl = ctk.CTkLabel(
+            content, text="",
+            font=ctk.CTkFont(size=13), text_color="#9999bb",
+            justify="left", anchor="w", wraplength=340,
+        )
+        self._greeting_lbl.pack(anchor="w", pady=(0, 10))
+
+        # Proactive insights section label
+        ctk.CTkLabel(
+            content, text="Aria Insights",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#444466", anchor="w",
+        ).pack(anchor="w")
+
+        # Scrollable insight cards
+        self._insights_scroll = ctk.CTkScrollableFrame(
+            content, fg_color="transparent", label_text="",
+        )
+        self._insights_scroll.pack(fill="both", expand=True, pady=(4, 0))
+
+        # Populate after all widgets exist + start 10-min proactive refresh
+        self.after(150, self.refresh_dashboard)
+        self.after(600_000, self._proactive_refresh)
 
     # ── dashboard (3-pane) ────────────────────────────────────────────────
 
@@ -262,9 +273,15 @@ class VoicePanel(ctk.CTkFrame):
         paned.add(search_pane, minsize=120)
 
     def refresh_dashboard(self):
-        self._refresh_greeting()
-        self._refresh_dash_notes()
-        self._refresh_dash_reminders()
+        try:
+            self._refresh_greeting()
+        except Exception:
+            pass
+        try:
+            self._refresh_dash_notes()
+            self._refresh_dash_reminders()
+        except Exception:
+            pass
 
     def _refresh_dash_notes(self):
         from core.notes import list_notes
@@ -707,23 +724,53 @@ class VoicePanel(ctk.CTkFrame):
                     llm_intent=llm, importance=imp, note_date=note_date)
         return f'Note: "{title}"'
 
-    # ── greeting ──────────────────────────────────────────────────────────
+    # ── greeting + insights ───────────────────────────────────────────────
 
     def _refresh_greeting(self):
         try:
-            data    = get_briefing_data()
-            greeting = generate_greeting(data)
-            bullets  = get_briefing_bullets(data)
-            self._greeting_lbl.configure(text=greeting)
-            for w in self._bullets_frame.winfo_children():
-                w.destroy()
-            for b in bullets:
-                ctk.CTkLabel(
-                    self._bullets_frame, text=b, anchor="w",
-                    font=ctk.CTkFont(size=12), text_color="#777799",
-                ).pack(anchor="w", pady=1)
+            from core.briefing import generate_greeting, get_briefing_data
+            data = get_briefing_data()
+            self._greeting_lbl.configure(text=generate_greeting(data))
         except Exception:
             self._greeting_lbl.configure(text="Ready when you are.")
+        self._refresh_insights()
+
+    def _refresh_insights(self):
+        try:
+            from core.briefing import get_insight_cards
+            cards = get_insight_cards()
+        except Exception:
+            return
+        for w in self._insights_scroll.winfo_children():
+            w.destroy()
+        _IMP_ACCENT = {"overdue": "#2a0f0f", "urgent": "#1e1400",
+                       "today": "#0a1828", "upcoming": "#0d1a28",
+                       "note": "#0a1a10", "done": "#0a1a10", "clear": "#111828"}
+        for card in cards:
+            bg = _IMP_ACCENT.get(card["type"], "#111828")
+            frame = ctk.CTkFrame(self._insights_scroll,
+                                 fg_color=bg, corner_radius=8)
+            frame.pack(fill="x", pady=4, padx=2)
+            hdr = ctk.CTkFrame(frame, fg_color="transparent")
+            hdr.pack(fill="x", padx=10, pady=(8, 2))
+            ctk.CTkLabel(
+                hdr, text=f"{card['icon']}  {card['title']}",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                text_color=card["color"], anchor="w",
+            ).pack(side="left")
+            if card.get("body"):
+                ctk.CTkLabel(
+                    frame, text=card["body"], anchor="w",
+                    font=ctk.CTkFont(size=11), text_color="#888899",
+                    wraplength=320,
+                ).pack(anchor="w", padx=10, pady=(0, 8))
+
+    def _proactive_refresh(self):
+        """Called every 10 minutes to surface new relevant content."""
+        if not self.winfo_exists():
+            return
+        self.refresh_dashboard()
+        self.after(600_000, self._proactive_refresh)
 
     # ── waveform animation ────────────────────────────────────────────────
 

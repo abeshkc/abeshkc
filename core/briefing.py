@@ -104,3 +104,124 @@ def get_briefing_bullets(data: dict | None = None) -> list[str]:
         bullets.append("✓  All clear")
 
     return bullets
+
+
+def get_insight_cards() -> list[dict]:
+    """
+    Generate proactive insight cards for the Aria home screen.
+    Each card: {"icon", "title", "body", "color", "type"}
+    Called every 10 minutes to surface relevant info.
+    """
+    from core.reminders import list_reminders, list_done_reminders
+    from core.notes import list_notes
+
+    now      = datetime.now()
+    now_str  = now.strftime("%Y-%m-%d %H:%M:%S")
+    today    = now.strftime("%Y-%m-%d")
+    week_end = (now + timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+
+    all_rem   = list_reminders(include_done=False)
+    done_rem  = list_done_reminders()
+    overdue   = [r for r in all_rem if r["due_at"] < now_str]
+    today_rem = [r for r in all_rem if r["due_at"].startswith(today)]
+    urgent    = [r for r in all_rem if r.get("importance") in ("High", "Urgent")]
+    upcoming  = [r for r in all_rem if now_str < r["due_at"] <= week_end]
+    notes     = list_notes("", sort_by="updated_at", ascending=False)
+
+    cards: list[dict] = []
+
+    # Overdue items — most important
+    if overdue:
+        n = len(overdue)
+        titles = ", ".join(r["title"] for r in overdue[:2])
+        suffix = f" and {n - 2} more" if n > 2 else ""
+        cards.append({
+            "icon":  "⚠",
+            "title": f"{n} Overdue Reminder{'s' if n > 1 else ''}",
+            "body":  titles + suffix,
+            "color": "#e74c3c",
+            "type":  "overdue",
+        })
+
+    # Today's schedule
+    if today_rem:
+        n = len(today_rem)
+        nxt = today_rem[0]
+        due_time = nxt["due_at"][11:16]
+        cards.append({
+            "icon":  "📅",
+            "title": f"{n} Reminder{'s' if n > 1 else ''} Today",
+            "body":  f"Next: {nxt['title']} at {due_time}",
+            "color": "#3B8ED0",
+            "type":  "today",
+        })
+
+    # Urgent items (not overdue)
+    non_overdue_urgent = [r for r in urgent if r["due_at"] >= now_str]
+    if non_overdue_urgent:
+        r = non_overdue_urgent[0]
+        cards.append({
+            "icon":  "🔴",
+            "title": "Urgent Item",
+            "body":  f"{r['title']} — due {r['due_at'][:10]}",
+            "color": "#e67e22",
+            "type":  "urgent",
+        })
+
+    # Upcoming this week
+    if upcoming and not today_rem:
+        n = len(upcoming)
+        nxt = upcoming[0]
+        due_date = nxt["due_at"][:10]
+        cards.append({
+            "icon":  "🗓",
+            "title": f"{n} Coming This Week",
+            "body":  f"Next: {nxt['title']} on {due_date}",
+            "color": "#5d8dbb",
+            "type":  "upcoming",
+        })
+
+    # Recent notes
+    if notes:
+        n = notes[0]
+        snippet = (n.get("content") or "")[:60].strip()
+        cards.append({
+            "icon":  "📝",
+            "title": f"Last Note — {n['title'][:28] or '(untitled)'}",
+            "body":  snippet if snippet else "No content.",
+            "color": "#27ae60",
+            "type":  "note",
+        })
+
+    # Done this week (encouragement)
+    week_start = (now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    done_week  = [r for r in done_rem
+                  if r.get("completed_at", "") >= week_start]
+    if done_week:
+        n = len(done_week)
+        cards.append({
+            "icon":  "✅",
+            "title": f"{n} Completed This Week",
+            "body":  random.choice([
+                "Nice progress — keep it up.",
+                "Great work staying on track.",
+                "You're on a roll.",
+            ]),
+            "color": "#27ae60",
+            "type":  "done",
+        })
+
+    # All clear
+    if not cards:
+        cards.append({
+            "icon":  "✦",
+            "title": "All Clear",
+            "body":  random.choice([
+                "Nothing pending. What would you like to work on?",
+                "Your schedule is open. Ready when you are.",
+            ]),
+            "color": "#5d8dbb",
+            "type":  "clear",
+        })
+
+    return cards
