@@ -182,6 +182,15 @@ class AriaAvatar(tk.Canvas):
             pid = self.create_oval(0, 0, 5, 5, fill="#152236", outline="")
             i["parts"].append(pid)
 
+        # ── CLICK LABEL (bottom of avatar) ───────────────────────────────
+        i["click_label"] = self.create_text(
+            _HCX, _H - 14,
+            text="Click to talk",
+            font=("Segoe UI", 9),
+            fill="#3a5a8a",
+            anchor="center",
+        )
+
     # ── animation ─────────────────────────────────────────────────────────
 
     def _animate(self):
@@ -233,6 +242,7 @@ class AriaAvatar(tk.Canvas):
         self.itemconfig(i["eye_l"], fill="#00d4ff")
         self.itemconfig(i["eye_r"], fill="#00d4ff")
         self.itemconfig(i["scan"], state="hidden")
+        self.itemconfig(i["click_label"], text="Click to talk", fill="#3a5a8a")
         self._blink_t += 1
         if self._blink_t > 100:
             self._blink_t = 0
@@ -256,6 +266,7 @@ class AriaAvatar(tk.Canvas):
         self.itemconfig(i["eye_l"], fill=f"#00{bv:02x}ff")
         self.itemconfig(i["eye_r"], fill=f"#00{bv:02x}ff")
         self.itemconfig(i["scan"], state="hidden")
+        self.itemconfig(i["click_label"], text="Listening...", fill="#c0392b")
 
     def _frame_processing(self):
         i = self._items
@@ -272,6 +283,7 @@ class AriaAvatar(tk.Canvas):
             self._scan_dir *= -1
         cx = _HCX + self._scan_x
         self.coords(i["scan"], cx - 18, _EYE_Y, cx + 18, _EYE_Y)
+        self.itemconfig(i["click_label"], text="Thinking...", fill="#2563eb")
 
     def _frame_thinking(self):
         i = self._items
@@ -288,6 +300,7 @@ class AriaAvatar(tk.Canvas):
         self.itemconfig(i["eye_l"], fill="#0099bb")
         self.itemconfig(i["eye_r"], fill="#0099bb")
         self.itemconfig(i["scan"], state="hidden")
+        self.itemconfig(i["click_label"], text="Thinking...", fill="#e67e22")
 
     # ── helpers ───────────────────────────────────────────────────────────
 

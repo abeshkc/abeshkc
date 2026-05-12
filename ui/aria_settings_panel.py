@@ -28,9 +28,9 @@ class AriaSettingsPanel(ctk.CTkToplevel):
         row.pack(fill="x", padx=28, pady=(10, 4))
         ctk.CTkLabel(row, text="Update interval (min):", anchor="w",
                      font=ctk.CTkFont(size=13)).pack(side="left")
-        self._interval_var = ctk.StringVar(value=str(self._settings.get("update_interval_minutes", 10)))
+        self._interval_var = ctk.StringVar(value=str(self._settings.get("update_interval_minutes", 60)))
         ctk.CTkOptionMenu(row, variable=self._interval_var,
-                          values=["5", "10", "15", "30"],
+                          values=["10", "15", "30", "60"],
                           width=80, font=ctk.CTkFont(size=13)).pack(side="right")
 
         row2 = ctk.CTkFrame(self, fg_color="transparent")

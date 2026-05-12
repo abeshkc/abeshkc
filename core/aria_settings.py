@@ -6,7 +6,7 @@ _PATH = Path.home() / ".noteremind" / "aria_settings.json"
 
 DEFAULTS: dict = {
     "enable_periodic_updates": True,
-    "update_interval_minutes": 10,
+    "update_interval_minutes": 60,
     "num_insights": 4,
     "include_note_analysis": True,
     "quiet_mode": False,

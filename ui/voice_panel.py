@@ -115,8 +115,8 @@ class VoicePanel(ctk.CTkFrame):
         voice_bar.pack(side="bottom", fill="x", padx=16, pady=(0, 6))
 
         self._status = ctk.CTkLabel(
-            voice_bar, text="",
-            text_color="#5d8dbb", font=ctk.CTkFont(size=12),
+            voice_bar, text="Click Aria to begin or just type.",
+            text_color="#445566", font=ctk.CTkFont(size=12),
             anchor="w",
         )
         self._status.pack(anchor="w", padx=14, pady=(6, 0))
@@ -184,11 +184,11 @@ class VoicePanel(ctk.CTkFrame):
 
         # Insights header row: label + last-updated + refresh + settings
         ins_hdr = ctk.CTkFrame(content, fg_color="transparent")
-        ins_hdr.pack(fill="x", pady=(0, 2))
+        ins_hdr.pack(fill="x", pady=(10, 4))
         ctk.CTkLabel(
             ins_hdr, text="Aria Insights",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color="#444466", anchor="w",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color="#7788bb", anchor="w",
         ).pack(side="left")
         ctk.CTkButton(
             ins_hdr, text="⚙", width=28, height=24,
@@ -218,88 +218,51 @@ class VoicePanel(ctk.CTkFrame):
         self.after(150, self.refresh_dashboard)
         self.after(600_000, self._proactive_refresh)
 
-    # ── dashboard (3-pane) ────────────────────────────────────────────────
+    # ── dashboard (AI Search only) ────────────────────────────────────────
 
     def _build_dashboard(self, parent):
         ctk.CTkLabel(
-            parent, text="📋  Overview",
+            parent, text="🔍  AI Search",
             font=ctk.CTkFont(size=14, weight="bold"),
-        ).pack(anchor="w", padx=14, pady=(12, 4))
+        ).pack(anchor="w", padx=14, pady=(14, 4))
 
-        # Vertical resizable paned window
-        paned = tk.PanedWindow(
-            parent, orient="vertical",
-            sashwidth=5, sashrelief="flat",
-            background="#2a2d40", bd=0,
-        )
-        paned.pack(fill="both", expand=True, padx=6, pady=(0, 8))
-
-        # ── Pane 1: Recent Notes ──────────────────────────────────────────
-        notes_pane = ctk.CTkFrame(paned, fg_color="transparent")
-        ctk.CTkLabel(notes_pane, text="Recent Notes",
-                     font=ctk.CTkFont(size=11, weight="bold"),
-                     text_color="#5d8dbb").pack(anchor="w", padx=8, pady=(6, 2))
-        self._dash_notes = ctk.CTkScrollableFrame(notes_pane, fg_color="transparent")
-        self._dash_notes.pack(fill="both", expand=True, padx=4)
-        paned.add(notes_pane, minsize=80)
-
-        # ── Pane 2: Upcoming Reminders ────────────────────────────────────
-        rem_pane = ctk.CTkFrame(paned, fg_color="transparent")
-        ctk.CTkLabel(rem_pane, text="Upcoming Reminders",
-                     font=ctk.CTkFont(size=11, weight="bold"),
-                     text_color="#5d8dbb").pack(anchor="w", padx=8, pady=(6, 2))
-        self._dash_reminders = ctk.CTkScrollableFrame(rem_pane, fg_color="transparent")
-        self._dash_reminders.pack(fill="both", expand=True, padx=4)
-        paned.add(rem_pane, minsize=80)
-
-        # ── Pane 3: AI Search ─────────────────────────────────────────────
-        search_pane = ctk.CTkFrame(paned, fg_color="transparent")
-
-        # Search header
-        sh = ctk.CTkFrame(search_pane, fg_color="transparent")
-        sh.pack(fill="x", padx=8, pady=(6, 4))
-        ctk.CTkLabel(sh, text="🔍  AI Search",
-                     font=ctk.CTkFont(size=11, weight="bold"),
-                     text_color="#5d8dbb").pack(side="left")
+        # Helper text
+        ctk.CTkLabel(
+            parent, text="Click Aria to begin or just type.",
+            font=ctk.CTkFont(size=11), text_color="#445566", anchor="w",
+        ).pack(anchor="w", padx=14, pady=(0, 8))
 
         # Search input row
-        sinput_row = ctk.CTkFrame(search_pane, fg_color="transparent")
-        sinput_row.pack(fill="x", padx=6, pady=(0, 4))
+        sinput_row = ctk.CTkFrame(parent, fg_color="transparent")
+        sinput_row.pack(fill="x", padx=10, pady=(0, 6))
         self._search_var = ctk.StringVar()
         self._search_entry = ctk.CTkEntry(
             sinput_row, textvariable=self._search_var,
             placeholder_text="Search notes & reminders…",
-            font=ctk.CTkFont(size=11),
+            font=ctk.CTkFont(size=12),
         )
         self._search_entry.pack(side="left", fill="x", expand=True)
         self._search_entry.bind("<Return>", lambda e: self._do_text_search())
         ctk.CTkButton(
-            sinput_row, text="⏎", width=32,
+            sinput_row, text="⏎", width=34,
             font=ctk.CTkFont(size=13),
             command=self._do_text_search,
         ).pack(side="left", padx=(4, 0))
 
         # Summary label
         self._search_summary = ctk.CTkLabel(
-            search_pane, text="", text_color="#5d8dbb",
+            parent, text="", text_color="#5d8dbb",
             font=ctk.CTkFont(size=11), anchor="w",
         )
-        self._search_summary.pack(anchor="w", padx=8)
+        self._search_summary.pack(anchor="w", padx=14, pady=(2, 0))
 
-        # Results area
-        self._search_results = ctk.CTkScrollableFrame(search_pane, fg_color="transparent")
-        self._search_results.pack(fill="both", expand=True, padx=4, pady=(2, 4))
-
-        paned.add(search_pane, minsize=120)
+        # Results area — fills remaining space
+        self._search_results = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        self._search_results.pack(fill="both", expand=True, padx=8, pady=(4, 10))
 
     def refresh_dashboard(self):
         try:
             self._refresh_greeting()
-        except Exception:
-            pass
-        try:
-            self._refresh_dash_notes()
-            self._refresh_dash_reminders()
         except Exception:
             pass
 
@@ -457,13 +420,13 @@ class VoicePanel(ctk.CTkFrame):
             self._set_status(f"Microphone error: {exc}", "#e74c3c")
             return
         self._avatar.set_state("listening")
-        self._set_status("Listening...", "#e74c3c")
+        self._set_status("Press to stop", "#e74c3c")
         self._set_preview("")
         self._animate_bars()
 
     def _stop(self):
         self._avatar.set_state("processing")
-        self._set_status("Processing...", "gray")
+        self._set_status("Processing...", "#5d8dbb")
         self._progress.pack(pady=(0, 6))
         self._progress.start()
         audio_path = self._recorder.stop()
@@ -473,7 +436,7 @@ class VoicePanel(ctk.CTkFrame):
         self._progress.stop()
         self._progress.pack_forget()
         self._avatar.set_state("idle")
-        self._set_status("", "#5d8dbb")
+        self._set_status("Click Aria to begin or just type.", "#445566")
 
     # ── pipeline ──────────────────────────────────────────────────────────
 
@@ -650,7 +613,7 @@ class VoicePanel(ctk.CTkFrame):
         ).pack(side="left")
 
         self._result_panel.pack(fill="x", padx=20, pady=(0, 12))
-        self._set_status("Ready for review", "#27ae60")
+        self._set_status("Review the result below.", "#27ae60")
 
     def _hide_result(self):
         self._result_panel.pack_forget()
@@ -697,13 +660,13 @@ class VoicePanel(ctk.CTkFrame):
     def _re_record(self):
         self._hide_result()
         self._set_preview("")
-        self._set_status("", "#5d8dbb")
+        self._set_status("Click Aria to begin or just type.", "#445566")
         self._start()
 
     def _cancel(self):
         self._hide_result()
         self._set_preview("")
-        self._set_status("", "#5d8dbb")
+        self._set_status("Click Aria to begin or just type.", "#445566")
 
     # ── execution ─────────────────────────────────────────────────────────
 
