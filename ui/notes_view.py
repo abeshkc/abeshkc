@@ -70,23 +70,22 @@ class NotesView(ctk.CTkFrame):
         # ── RIGHT: editor ──────────────────────────────────────────────────
         right = ctk.CTkFrame(pane)
 
+        ctk.CTkLabel(
+            right, text="📝  New Note",
+            font=ctk.CTkFont(size=15, weight="bold"),
+        ).pack(anchor="w", padx=14, pady=(12, 8))
+
         ctk.CTkLabel(right, text="Title", anchor="w",
-                     font=ctk.CTkFont(size=13)).pack(anchor="w", padx=14, pady=(14, 0))
+                     font=ctk.CTkFont(size=13)).pack(anchor="w", padx=14, pady=(0, 0))
         self._title_var = ctk.StringVar()
         ctk.CTkEntry(right, textvariable=self._title_var,
                      placeholder_text="Note title",
                      font=ctk.CTkFont(size=13)).pack(
             fill="x", padx=14, pady=(2, 8))
 
-        ctk.CTkLabel(right, text="Content", anchor="w",
-                     font=ctk.CTkFont(size=13)).pack(anchor="w", padx=14)
-        self._content_box = ctk.CTkTextbox(right, wrap="word",
-                                           font=ctk.CTkFont(size=13))
-        self._content_box.pack(fill="both", expand=True, padx=14, pady=(2, 8))
-
-        # Tags + Date + Importance on same row
+        # Tags + Date + Importance on same row — now at top
         meta = ctk.CTkFrame(right, fg_color="transparent")
-        meta.pack(fill="x", padx=14, pady=(0, 4))
+        meta.pack(fill="x", padx=14, pady=(0, 8))
         ctk.CTkLabel(meta, text="Tags:", width=44, anchor="w",
                      font=ctk.CTkFont(size=13)).pack(side="left")
         self._tags_var = ctk.StringVar()
@@ -108,6 +107,12 @@ class NotesView(ctk.CTkFrame):
                           values=list(IMPORTANCE_LEVELS), width=110,
                           font=ctk.CTkFont(size=13)).pack(
             side="left", padx=(4, 0))
+
+        ctk.CTkLabel(right, text="Content", anchor="w",
+                     font=ctk.CTkFont(size=13)).pack(anchor="w", padx=14)
+        self._content_box = ctk.CTkTextbox(right, wrap="word",
+                                           font=ctk.CTkFont(size=13))
+        self._content_box.pack(fill="both", expand=True, padx=14, pady=(2, 8))
 
         btn_row = ctk.CTkFrame(right, fg_color="transparent")
         btn_row.pack(fill="x", padx=14, pady=(0, 14))
