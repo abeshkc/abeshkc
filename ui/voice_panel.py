@@ -829,17 +829,24 @@ def _extract_datetime_expr(text: str) -> str:
     return ""
 
 
+_SEARCH_VERBS = [
+    "find", "search", "look for", "show me", "show my",
+    "can you find", "get me", "what are", "list my", "list all",
+]
+
 def _rule_based_intent(text: str) -> dict:
     t = text.lower().strip()
 
-    if any(w in t for w in ["remind", "reminder", "appointment", "schedule", "alert"]):
-        intent = "create_reminder"
-    elif any(w in t for w in ["meeting note", "meeting", "meeting with"]):
-        intent = "create_meeting_note"
-    elif any(w in t for w in ["note", "write", "jot", "record", "add a note"]):
-        intent = "create_note"
-    elif any(w in t for w in ["find", "search", "look for", "show me"]):
+    # Search ALWAYS wins when a retrieval verb is present — check first.
+    if any(t.startswith(v) or f" {v} " in t or t == v for v in _SEARCH_VERBS):
         intent = "search"
+    elif any(w in t for w in ["remind me", "set a reminder", "reminder", "appointment",
+                               "schedule", "alert me"]):
+        intent = "create_reminder"
+    elif any(w in t for w in ["meeting note", "note the meeting", "record the meeting"]):
+        intent = "create_meeting_note"
+    elif any(w in t for w in ["add a note", "write down", "jot", "note that", "new note"]):
+        intent = "create_note"
     else:
         intent = "unknown"
 
@@ -868,6 +875,20 @@ def _rule_based_intent(text: str) -> dict:
     dt_expr  = _extract_datetime_expr(text)
     missing  = [] if dt_expr else ["datetime"]
 
+    # For search, strip the leading retrieval verb to get a clean query
+    search_query = ""
+    if intent == "search":
+        sq = t
+        for verb in sorted(_SEARCH_VERBS, key=len, reverse=True):
+            if sq.startswith(verb):
+                sq = sq[len(verb):].strip()
+                for filler in ("me ", "my ", "for ", "all ", "us "):
+                    if sq.startswith(filler):
+                        sq = sq[len(filler):]
+                        break
+                break
+        search_query = sq.strip()
+
     return {
         "intent": intent,
         "confidence": 0.70,
@@ -879,10 +900,10 @@ def _rule_based_intent(text: str) -> dict:
             "participants": [], "tags": [],
             "priority": "normal", "importance": importance,
             "recurrence": "none",
-            "search_query": text if intent == "search" else "",
+            "search_query": search_query,
             "linked_note_title": "", "linked_note_id": None,
         },
-        "action_summary": f"[Rule-based] {intent}: {title}",
+        "action_summary": f"[Rule-based] {intent}: {search_query or title}",
         "missing_fields": missing,
     }
 
