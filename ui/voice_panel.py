@@ -184,6 +184,9 @@ class VoicePanel(ctk.CTkFrame):
             onvalue=True, offvalue=False,
         ).pack(side="left")
 
+        # Populate dashboard after all widgets exist
+        self.after(100, self.refresh_dashboard)
+
     # ── dashboard (3-pane) ────────────────────────────────────────────────
 
     def _build_dashboard(self, parent):
@@ -257,8 +260,6 @@ class VoicePanel(ctk.CTkFrame):
         self._search_results.pack(fill="both", expand=True, padx=4, pady=(2, 4))
 
         paned.add(search_pane, minsize=120)
-
-        self.refresh_dashboard()
 
     def refresh_dashboard(self):
         self._refresh_greeting()
