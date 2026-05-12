@@ -34,16 +34,26 @@ Schema:
 Intent classification rules (apply in this priority order):
 
 PRIORITY 1 — SEARCH (highest priority):
-  If the user's phrasing contains ANY retrieval verb — "find", "search", "look for",
-  "show me", "show my", "can you find", "get me", "what are", "list" — classify as "search"
-  REGARDLESS of what noun follows (even if it mentions "note", "meeting", "reminder").
-  Put the full search phrase in search_query. Confidence should be ≥ 0.90.
+  Classify as "search" whenever the user wants to RETRIEVE existing content,
+  regardless of phrasing. This includes:
+  - Explicit retrieval verbs: "find", "search", "look for", "show me", "show my",
+    "can you find", "get me", "what are", "list", "pull up", "bring up"
+  - Implicit retrieval: "within the notes...", "from my reminders...", "which notes..."
+  - Any sentence where the user is asking Aria to locate something that already exists.
+
+  For search_query: extract ONLY the core topic/entity being searched for.
+  Strip filler phrases like "within the notes", "find me the ones", "related to", etc.
+  Keep names, keywords, and specific topics.
+
   Examples:
-    "find me meeting notes with yaseen"              → search, query="meeting notes yaseen"
-    "search for reminders about DIEM"               → search, query="DIEM"
-    "show my urgent reminders"                       → search, query="urgent reminders"
-    "can you find notes about Lebanon"               → search, query="Lebanon"
-    "look for my meeting with Yaseen"                → search, query="Yaseen meeting"
+    "find me meeting notes with yaseen"                      → search, query="yaseen meeting"
+    "within the notes, find me the ones related to yaseen"  → search, query="yaseen"
+    "search for reminders about DIEM"                       → search, query="DIEM"
+    "show my urgent reminders"                               → search, query="urgent"
+    "can you find notes about Lebanon"                       → search, query="Lebanon"
+    "look for my meeting with Yaseen last week"             → search, query="Yaseen meeting"
+    "which notes mention the LCSI project"                  → search, query="LCSI"
+    "pull up anything about the budget"                     → search, query="budget"
 
 PRIORITY 2 — REMINDER / APPOINTMENT:
   Only if no retrieval verb is present. Words: "remind me", "set a reminder",
