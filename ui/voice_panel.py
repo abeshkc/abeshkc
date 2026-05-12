@@ -114,11 +114,11 @@ class VoicePanel(ctk.CTkFrame):
         voice_bar.pack(side="bottom", fill="x", padx=16, pady=(0, 6))
 
         self._status = ctk.CTkLabel(
-            voice_bar, text="Press to talk to Aria",
-            text_color="#5d8dbb", font=ctk.CTkFont(size=13, weight="bold"),
+            voice_bar, text="",
+            text_color="#5d8dbb", font=ctk.CTkFont(size=12),
             anchor="w",
         )
-        self._status.pack(anchor="w", padx=14, pady=(8, 2))
+        self._status.pack(anchor="w", padx=14, pady=(6, 0))
 
         self._progress = ctk.CTkProgressBar(voice_bar, width=300, mode="indeterminate")
 
@@ -453,7 +453,7 @@ class VoicePanel(ctk.CTkFrame):
         self._progress.stop()
         self._progress.pack_forget()
         self._avatar.set_state("idle")
-        self._set_status("Press to talk to Aria", "#5d8dbb")
+        self._set_status("", "#5d8dbb")
 
     # ── pipeline ──────────────────────────────────────────────────────────
 
@@ -677,13 +677,13 @@ class VoicePanel(ctk.CTkFrame):
     def _re_record(self):
         self._hide_result()
         self._set_preview("")
-        self._set_status("Press to talk to Aria", "#5d8dbb")
+        self._set_status("", "#5d8dbb")
         self._start()
 
     def _cancel(self):
         self._hide_result()
         self._set_preview("")
-        self._set_status("Press to talk to Aria", "#5d8dbb")
+        self._set_status("", "#5d8dbb")
 
     # ── execution ─────────────────────────────────────────────────────────
 
