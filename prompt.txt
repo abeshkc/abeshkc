@@ -1,235 +1,147 @@
-Modify the app so that Aria feels alive, emotionally engaging, and more like a real personal organizer companion instead of just a utility tool.
+Modify Aria’s startup briefing and ongoing engagement system.
 
 Goal:
-When the app loads, Aria should greet the user, visually appear as a friendly AI companion, and proactively engage with the user based on reminders, meetings, notes, unfinished tasks, and stored information.
+When Aria starts, she should give a richer, more meaningful briefing based on the database, not just one short overdue-reminder line.
 
-The experience should feel:
-- warm
-- intelligent
-- helpful
-- lightly conversational
-- motivating
-- personal but not creepy
-- productivity-focused
+1. Richer startup briefing
 
-1. Add animated Aria character/avatar
+When the app starts, Aria should scan the local database and generate a short but useful briefing.
 
-When the app launches, display a cartoon-style robot/AI face representing Aria.
-
-Requirements:
-- modern and friendly design
-- not childish
-- expressive but lightweight
-- should fit the premium productivity aesthetic
-- should work in dark and light mode
-
-Behavior:
-- idle blinking or subtle movement
-- gentle pulse/glow while speaking/thinking
-- listening animation when voice mode is active
-- expression changes slightly depending on context:
-  - happy
-  - neutral
-  - thinking
-  - reminder/warning
-
-Be creative.
-
-Possible inspirations:
-- futuristic assistant
-- minimal robot face
-- holographic AI orb with eyes
-- floating AI avatar
-- subtle animated assistant portrait
-
-Do NOT make it look like a gaming mascot or cartoon toy.
-
-2. Add startup greeting experience
-
-When the app opens, Aria should greet the user dynamically.
-
-Examples:
-- “Welcome back.”
-- “You have 4 reminders coming up this week.”
-- “You had 3 meetings yesterday. Hope they went well.”
-- “You marked 5 tasks as done this week. Nice progress.”
-- “One of your notes mentioned buying a watch. Did you get it?”
-- “You have an important reminder tomorrow morning.”
-- “You haven’t reviewed your Yemen notes in a while.”
-
-The greeting should:
-- be generated dynamically from stored app data
-- feel natural and conversational
-- vary from day to day
-- avoid repetitive robotic phrasing
-
-3. Context-aware engagement system
-
-Create a lightweight “Aria engagement engine”.
-
-Aria should be able to:
-- summarize upcoming reminders
-- mention overdue tasks
-- reference unfinished items
-- mention recent meetings
-- recall relevant notes
-- encourage productivity
-- gently follow up on personal notes/tasks
-
-Examples:
-- “You still have 2 urgent reminders not completed.”
-- “There’s a recurring meeting tomorrow afternoon.”
-- “You created a note about improving your report workflow.”
-- “You haven’t opened your Lebanon meeting notes recently.”
-
-Important:
-- keep interactions concise
-- no long paragraphs
-- avoid sounding intrusive or creepy
-- avoid over-personalization
-
-4. Add “Daily Briefing” panel
-
-Add a small “Daily Briefing” or “Aria Update” section near the assistant avatar.
-
-This section can contain:
-- today’s reminders
-- overdue items
-- meeting count
-- upcoming deadlines
-- motivational/contextual messages
-- recent activity summary
+Include several relevant points such as:
+- overdue reminders
+- upcoming reminders
+- number of tasks completed recently
+- meeting notes written recently
+- upcoming meetings
+- important or urgent items
+- recurring reminders
+- useful follow-ups based on note text
 
 Example:
---------------------------------
-Good morning.
+“Welcome back. You have 3 overdue reminders, including one marked urgent. You completed 5 tasks this week. You wrote 2 meeting notes yesterday. One note mentions buying a watch — did you already do it?”
 
-• 3 reminders today
-• 1 overdue task
-• 2 meetings this afternoon
-• Last note edited: Yemen Brief
---------------------------------
+2. More than one line on overdue items
 
-5. Voice and animation integration
+If there are overdue reminders, do not show only one generic line.
 
-When Aria is:
-- listening → avatar animates
-- processing → thinking animation
-- responding → subtle glow/movement
-- idle → calm breathing/blinking animation
+Show:
+- total overdue reminders
+- urgent/high-importance overdue reminders
+- oldest overdue reminder
+- overdue reminders due today/yesterday/this week
+- suggested action, such as review or mark done
 
-Keep animations lightweight and responsive.
+Keep it concise.
 
-6. Add intelligent conversational prompts
+3. Database insight extraction
 
-Aria should occasionally ask lightweight contextual questions.
+Add a lightweight “Aria Insight Engine”.
 
-Examples:
-- “Did you finish the report you mentioned yesterday?”
-- “Do you want me to create a reminder for that?”
-- “You seem to have several overdue tasks this week.”
-- “Would you like to review your meeting notes?”
-
-Important:
-- these should be occasional
-- not spammy
-- configurable in settings
-- user can disable proactive suggestions
-
-7. Add settings for personality behavior
-
-Add settings such as:
-- Enable Aria greetings
-- Enable proactive suggestions
-- Greeting frequency
-- Animation intensity
-- Quiet mode
-- Minimal mode
-
-8. Data awareness
-
-Aria can use:
+Aria should query the database and extract meaningful information from:
 - reminders
-- overdue reminders
-- notes
+- completed tasks
+- overdue tasks
 - meeting notes
-- Microsoft calendar imports
+- normal notes
 - recurring reminders
-- Done history
-- importance/priority
+- Microsoft-imported meetings if available
 
-to generate contextual messages.
+The engine should create context-aware insights such as:
+- “You completed more tasks this week than last week.”
+- “You have several notes related to DIEM.”
+- “Your recent meeting notes mention Yemen twice.”
+- “You have an unfinished reminder linked to a meeting note.”
+- “You have 2 urgent reminders due in the next 48 hours.”
 
-Do NOT:
-- expose sensitive data unnecessarily
-- send these summaries to external APIs unless already part of the existing Claude workflow
-- sound invasive
+4. Note text analysis
 
-9. Optional lightweight memory layer
-
-If feasible, add lightweight contextual tracking such as:
-- recently mentioned goals
-- frequently referenced topics
-- unfinished recurring themes
+Aria should look at note text and meeting note text for simple useful follow-ups.
 
 Examples:
-- “You’ve mentioned AI research several times this week.”
-- “You still have unfinished reminders related to reports.”
+- If note says “I need to buy a watch”, Aria can ask:
+  “One of your notes says you need to buy a watch. Did you do it?”
+- If several notes mention the same topic, Aria can say:
+  “You have several recent notes mentioning Lebanon. Worth reviewing?”
+- If meeting note includes action words like “follow up”, “send”, “review”, “prepare”, “buy”, “call”, Aria can surface them.
 
-Keep this simple and local.
+Keep this simple and local if possible. Do not send notes to Claude unless the app already has explicit permission/settings for that.
 
-10. UI integration
+5. Periodic updates every 10 minutes
 
-The Aria avatar + greeting should appear:
-- on startup/dashboard/home screen
-- near the voice interaction area
-- in a visually prominent but non-intrusive way
+Every 10 minutes while the app is open, Aria should refresh and display 3–4 relevant insights.
 
-The UI should feel:
-- modern
-- assistant-driven
-- alive
-- clean
+Examples:
+- overdue reminder summary
+- upcoming task
+- completed task count
+- recent meeting note summary
+- useful note-based follow-up
 
-11. Preserve existing functionality
+Do not spam the user with popups.
 
-Do not remove or break:
-- local Whisper transcription
-- Claude API parsing
+Preferred behavior:
+- update the Aria briefing panel quietly
+- optionally show a subtle animation or badge
+- avoid repeating the exact same messages repeatedly
+
+6. Relevance and variety
+
+Aria should rank insights by usefulness.
+
+Priority order:
+1. overdue urgent reminders
+2. reminders due soon
+3. meetings today/upcoming
+4. recent meeting notes
+5. incomplete follow-ups found in note text
+6. completed task progress
+7. general productivity encouragement
+
+Avoid showing irrelevant or repetitive insights.
+
+7. User controls
+
+Add settings:
+- Enable periodic Aria updates
+- Update frequency, default 10 minutes
+- Number of insights, default 3–4
+- Include note-text insights: on/off
+- Quiet mode
+- Pause Aria updates
+
+8. UI behavior
+
+The Aria panel should show:
+- greeting
+- 3–4 insight cards or bullets
+- last updated time
+- refresh button
+- optional “Review” button next to actionable insights
+
+9. Tests
+
+Add/update tests for:
+- startup briefing includes multiple insight types
+- overdue reminders generate detailed insight
+- completed task count appears
+- meeting notes count appears
+- note-text follow-up is detected
+- periodic 10-minute refresh is scheduled
+- repeated insights are reduced
+- settings can disable periodic updates
+
+10. Preserve existing functionality
+
+Do not break:
+- voice assistant
 - reminders
-- recurring reminders
 - notes
 - meeting notes
 - Microsoft sync
-- sorting
-- adjustable layouts
 - reminder popups
-- voice-first workflow
+- sorting
+- Claude parser
+- local Whisper
 
-12. Tests
-
-Add/update tests for:
-- Aria avatar loads successfully
-- greeting panel appears on startup
-- reminder summaries generate correctly
-- overdue reminders appear in briefing
-- meetings summary works
-- proactive prompts can be enabled/disabled
-- animations trigger during listening/processing
-- contextual messages do not crash when data is missing
-
-13. README update
-
-Update README with:
-- Aria assistant overview
-- Daily Briefing feature
-- proactive suggestion system
-- privacy notes
-- personalization settings
-
-Implementation rules:
-- Keep the experience lightweight and responsive.
-- Avoid making the app feel childish or gimmicky.
-- Focus on a premium “AI personal organizer” experience.
-- Keep all contextual reasoning local unless already using Claude parsing intentionally.
-- Patch the current architecture cleanly without rewriting the app.
+Implementation rule:
+Patch the current system cleanly. Keep it lightweight and responsive.

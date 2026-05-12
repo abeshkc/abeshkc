@@ -6,6 +6,7 @@ import tkinter.messagebox as mb
 import customtkinter as ctk
 import threading
 import random
+from datetime import datetime
 
 from services.audio_recorder import AudioRecorder, AUDIO_AVAILABLE
 from services.speech_to_text import transcribe_audio
@@ -181,18 +182,37 @@ class VoicePanel(ctk.CTkFrame):
         )
         self._greeting_lbl.pack(anchor="w", pady=(0, 10))
 
-        # Proactive insights section label
+        # Insights header row: label + last-updated + refresh + settings
+        ins_hdr = ctk.CTkFrame(content, fg_color="transparent")
+        ins_hdr.pack(fill="x", pady=(0, 2))
         ctk.CTkLabel(
-            content, text="Aria Insights",
+            ins_hdr, text="Aria Insights",
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color="#444466", anchor="w",
-        ).pack(anchor="w")
+        ).pack(side="left")
+        ctk.CTkButton(
+            ins_hdr, text="⚙", width=28, height=24,
+            font=ctk.CTkFont(size=13),
+            fg_color="transparent", hover_color="#2b2b3b",
+            command=self._open_settings,
+        ).pack(side="right", padx=(4, 0))
+        ctk.CTkButton(
+            ins_hdr, text="↻", width=28, height=24,
+            font=ctk.CTkFont(size=13),
+            fg_color="transparent", hover_color="#2b2b3b",
+            command=self.refresh_dashboard,
+        ).pack(side="right")
+        self._updated_lbl = ctk.CTkLabel(
+            ins_hdr, text="", font=ctk.CTkFont(size=10),
+            text_color="#333355", anchor="e",
+        )
+        self._updated_lbl.pack(side="right", padx=(0, 6))
 
         # Scrollable insight cards
         self._insights_scroll = ctk.CTkScrollableFrame(
             content, fg_color="transparent", label_text="",
         )
-        self._insights_scroll.pack(fill="both", expand=True, pady=(4, 0))
+        self._insights_scroll.pack(fill="both", expand=True, pady=(0, 0))
 
         # Populate after all widgets exist + start 10-min proactive refresh
         self.after(150, self.refresh_dashboard)
@@ -737,40 +757,104 @@ class VoicePanel(ctk.CTkFrame):
 
     def _refresh_insights(self):
         try:
-            from core.briefing import get_insight_cards
-            cards = get_insight_cards()
+            from core.briefing import get_insight_cards, get_briefing_data
+            from core.aria_settings import load as load_settings
+            cfg   = load_settings()
+            data  = get_briefing_data()
+            cards = get_insight_cards(
+                data=data,
+                max_cards=cfg.get("num_insights", 4),
+                include_note_analysis=cfg.get("include_note_analysis", True),
+            )
         except Exception:
             return
+
         for w in self._insights_scroll.winfo_children():
             w.destroy()
-        _IMP_ACCENT = {"overdue": "#2a0f0f", "urgent": "#1e1400",
-                       "today": "#0a1828", "upcoming": "#0d1a28",
-                       "note": "#0a1a10", "done": "#0a1a10", "clear": "#111828"}
+
+        _BG = {
+            "urgent_overdue": "#200808", "overdue_summary": "#1a0808",
+            "due_soon": "#1a1000", "today_schedule": "#081828",
+            "upcoming_week": "#0a1422", "recent_meetings": "#081a0e",
+            "note_action": "#1a1200", "topic_cluster": "#0a1020",
+            "progress": "#081a0e", "recurring": "#0a1020", "clear": "#0e1020",
+        }
+
         for card in cards:
-            bg = _IMP_ACCENT.get(card["type"], "#111828")
-            frame = ctk.CTkFrame(self._insights_scroll,
-                                 fg_color=bg, corner_radius=8)
+            bg = _BG.get(card.get("type", ""), "#111828")
+            frame = ctk.CTkFrame(self._insights_scroll, fg_color=bg, corner_radius=8)
             frame.pack(fill="x", pady=4, padx=2)
+
             hdr = ctk.CTkFrame(frame, fg_color="transparent")
             hdr.pack(fill="x", padx=10, pady=(8, 2))
             ctk.CTkLabel(
-                hdr, text=f"{card['icon']}  {card['title']}",
+                hdr,
+                text=f"{card['icon']}  {card['title']}",
                 font=ctk.CTkFont(size=12, weight="bold"),
                 text_color=card["color"], anchor="w",
-            ).pack(side="left")
+            ).pack(side="left", fill="x", expand=True)
+
+            # Review button for actionable cards
+            if card.get("review_id"):
+                rid   = card["review_id"]
+                rtype = card.get("review_type", "note")
+                ctk.CTkButton(
+                    hdr, text="Review", width=60, height=22,
+                    font=ctk.CTkFont(size=10),
+                    fg_color="#1e3a5f", hover_color="#2a4f7a",
+                    command=lambda i=rid, t=rtype: self._review_item(i, t),
+                ).pack(side="right")
+
             if card.get("body"):
                 ctk.CTkLabel(
                     frame, text=card["body"], anchor="w",
-                    font=ctk.CTkFont(size=11), text_color="#888899",
-                    wraplength=320,
+                    font=ctk.CTkFont(size=11), text_color="#7777aa",
+                    wraplength=310,
                 ).pack(anchor="w", padx=10, pady=(0, 8))
 
+        # Update timestamp
+        ts = datetime.now().strftime("%H:%M")
+        try:
+            self._updated_lbl.configure(text=f"Updated {ts}")
+        except Exception:
+            pass
+
     def _proactive_refresh(self):
-        """Called every 10 minutes to surface new relevant content."""
+        """Called periodically to surface new relevant content."""
         if not self.winfo_exists():
             return
+        try:
+            from core.aria_settings import load as _s
+            cfg = _s()
+            if cfg.get("pause_updates") or not cfg.get("enable_periodic_updates", True):
+                self.after(60_000, self._proactive_refresh)
+                return
+            interval_ms = int(cfg.get("update_interval_minutes", 10)) * 60_000
+        except Exception:
+            interval_ms = 600_000
         self.refresh_dashboard()
-        self.after(600_000, self._proactive_refresh)
+        self.after(interval_ms, self._proactive_refresh)
+
+    def _review_item(self, item_id: int, item_type: str):
+        """Open a note or reminder in the correct editor."""
+        if item_type == "note":
+            from core.notes import get_note
+            note = get_note(item_id)
+            if note and self._on_fill_note:
+                self._on_fill_note(
+                    {"title": note["title"],
+                     "details": note.get("content", ""),
+                     "importance": note.get("importance", "Normal"),
+                     "note_date": note.get("note_date", ""),
+                     "tags": [t.strip() for t in (note.get("tags") or "").split(",") if t.strip()]},
+                    note.get("content", ""),
+                )
+        elif item_type == "reminder" and self._on_fill_reminder:
+            self._on_fill_reminder({"title": str(item_id)})
+
+    def _open_settings(self):
+        from ui.aria_settings_panel import AriaSettingsPanel
+        AriaSettingsPanel(self)
 
     # ── waveform animation ────────────────────────────────────────────────
 
