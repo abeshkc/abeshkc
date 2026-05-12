@@ -351,7 +351,7 @@ class VoicePanel(ctk.CTkFrame):
 
     def _do_voice_search(self, query: str):
         self._search_var.set(query)
-        self._set_status(f"Searching for "{query}"…", "#5d8dbb")
+        self._set_status(f'Searching for "{query}"...', "#5d8dbb")
         self._run_search(query)
 
     def _run_search(self, query: str):
