@@ -58,6 +58,45 @@ def create_reminder(
         return cur.lastrowid
 
 
+def get_reminder(reminder_id: int) -> dict | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM reminders WHERE id=?", (reminder_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def update_reminder(
+    reminder_id: int,
+    title: str,
+    due_at: datetime,
+    message: str = "",
+    recurrence_type: str = "none",
+    recurrence_interval: int = 1,
+    recurrence_end_date: str | None = None,
+    importance: str = "Normal",
+    remind_before: str = "",
+) -> None:
+    importance = importance if importance in IMPORTANCE_LEVELS else "Normal"
+    with get_connection() as conn:
+        conn.execute(
+            """UPDATE reminders SET title=?, due_at=?, message=?, recurrence_type=?,
+               recurrence_interval=?, recurrence_end_date=?, importance=?, remind_before=?
+               WHERE id=?""",
+            (
+                title.strip(),
+                due_at.strftime("%Y-%m-%d %H:%M:%S"),
+                message,
+                recurrence_type,
+                recurrence_interval,
+                recurrence_end_date,
+                importance,
+                remind_before,
+                reminder_id,
+            ),
+        )
+
+
 def mark_done(reminder_id: int) -> None:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_connection() as conn:

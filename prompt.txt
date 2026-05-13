@@ -1,140 +1,261 @@
-Modify the app UI and notification behavior with the following changes.
+Modify Aria so that it supports full voice-driven and text-driven editing workflows for notes and reminders.
 
 Goal:
-Simplify the interface, make Aria’s status clearer, remove Windows notifications, and improve the Aria Insights layout.
+Aria should evolve from a simple creator/search assistant into an interactive organizer that can:
+- search notes/reminders
+- open them
+- edit them
+- append text
+- update fields
+- save changes
+- close items
 
-1. Add recording status text
+through both voice commands and typed commands.
 
-When the user starts recording, show a clear secondary status text:
+Aria should remain accessible throughout the app, not only on the main dashboard.
 
-“Press to stop”
+1. Add voice/text editing workflow support
 
-Behavior:
-- Idle state: show “Click Aria to begin or just type.”
-- Recording state: show “Press to stop”
-- Processing state: show “Processing...”
-- Ready state: show “Review the result below.”
+Implement conversational editing capabilities for:
+- notes
+- meeting notes
+- reminders
 
-This should appear near the Aria/microphone area and be easy to see.
+Aria should support commands such as:
 
-2. Remove Windows notification feature
+Search:
+- “Aria, find my notes about Stanford engineering.”
+- “Search reminders related to Yemen.”
+- “Find urgent reminders.”
 
-Remove or disable Windows system notifications.
+Open:
+- “Aria, open the note titled Stanford engineering.”
+- “Open the reminder about the DIEM report.”
 
-The app should no longer trigger Windows toast notifications.
+Edit/add content:
+- “Aria, add the following to the note: LLMs are fun.”
+- “Append this text to the reminder details.”
+- “Change the reminder time to 5 PM.”
+- “Mark this reminder as urgent.”
+- “Update the title to Stanford AI Notes.”
 
-Keep only in-app reminder pop-up dialogs.
+Save/close:
+- “Aria, save and close.”
+- “Save changes.”
+- “Close this note.”
 
-Important:
-- Do not remove reminder functionality.
-- Do not remove in-app reminder alerts.
-- Due reminders should still appear inside the app.
-- Missed reminder indicators should still work.
+2. Aria must be globally accessible
 
-3. Remove left overview window
+Currently Aria appears mainly in the main window.
 
-Remove the overview window on the left that shows:
-- recent notes
-- upcoming reminders
+Modify the app so Aria is accessible from:
+- notes window
+- reminder window
+- meeting notes editor
+- search panel
+- edit dialogs
 
-Do not show these overview lists anymore.
+The user should always be able to:
+- click Aria
+- speak commands
+- type commands
 
-Instead, keep only the AI Search feature in that area.
+without returning to the home screen.
 
-4. Keep AI Search as the left-side feature
+3. Add conversational editing context
 
-The left area should now focus on AI Search only.
+Aria should maintain lightweight editing context.
 
-Add friendly helper text:
+Example workflow:
+- User searches notes
+- User opens a specific note
+- User says:
+  “Add this to the note...”
+- Aria should know which note is currently active
 
-“Click Aria to begin or just type.”
+Aria should track:
+- currently opened note/reminder
+- active editing target
+- last search results
+- selected item
 
-The AI Search area should support:
-- typed search
-- voice-triggered search
-- results display
-- clickable results
+so follow-up commands work naturally.
 
-5. Make “Aria Insights” label bigger and more visible
+4. Add active document context awareness
 
-The label/title currently shown as “Aria Insights” should be larger and clearer.
+If a note/reminder is already open in edit mode:
+- Aria should assume edit commands apply to the active item unless clarified.
 
-Suggested styling:
-- larger font size
-- bold or semi-bold
-- left-aligned
-- more spacing above/below
-- visually prominent section title
+Examples:
+- “Add this paragraph.”
+- “Change the title.”
+- “Set importance to urgent.”
+- “Save.”
+- “Close.”
 
-6. Set Aria insight update frequency to 1 hour
+5. Add edit intent parsing
 
-Change the default periodic update frequency from 10 minutes to 1 hour.
+Update Claude parser schema to support editing commands.
 
-Requirements:
-- Default = 60 minutes
-- Update settings/UI if there is a frequency selector
-- Update documentation
-- Update tests
+Add intents such as:
+- search_note
+- search_reminder
+- open_note
+- open_reminder
+- update_note
+- update_reminder
+- append_note
+- append_reminder
+- save_active_item
+- close_active_item
 
-7. Left-align Aria Insights section
+Example schema:
 
-Currently Aria Insights appears centered.
+{
+  "intent": "update_note",
+  "confidence": 0.92,
+  "requires_confirmation": false,
+  "target": {
+    "type": "note",
+    "id": 15,
+    "title": "Stanford Engineering"
+  },
+  "fields_to_update": {
+    "details_append": "LLMs are fun"
+  },
+  "action_summary": "Append text to active note"
+}
 
-Change layout so that:
-- the Aria Insights title is left-aligned
-- insight cards/bullets are left-aligned
-- content starts from the left edge of its panel
-- spacing remains clean and modern
+6. Add append vs replace behavior
 
-Add the text “Click to talk” on Aria’s lower body/avatar area.
-Requirements:
-- The text should appear directly on or just below Aria’s lower body.
-- It should be clearly readable but not too large.
-- It should feel integrated into the avatar design, like a small label or badge.
-- Keep it visible in idle state.
-- During recording, optionally change it to “Listening...”
-- During processing, optionally change it to “Thinking...”
-- Do not clutter the UI.
-- Preserve the existing Aria animation and click-to-speak behavior.
+Aria must distinguish between:
+- append
+- replace
+- overwrite
 
-8. Preserve existing features
+Examples:
+- “Add this to the note” → append
+- “Replace the note content with...” → overwrite
+- “Change the title to...” → replace title field
+
+Destructive overwrites should require confirmation.
+
+7. Add voice editing mode feedback
+
+While editing:
+- show active note/reminder title
+- show “Editing: Stanford Engineering”
+- highlight active editing target visually
+
+When Aria updates content:
+- show a diff or preview if possible
+- or show:
+  “Added text to note.”
+
+8. Save workflow
+
+If user says:
+- “save”
+- “save changes”
+- “save and close”
+
+Aria should:
+- save the active item
+- optionally close it
+- update modified timestamp
+
+If there are no changes:
+- show:
+  “Nothing to save.”
+
+9. Close workflow
+
+If user says:
+- “close”
+- “close this note”
+- “exit editing”
+
+Aria should:
+- close the active editing view
+- warn if unsaved changes exist
+
+10. Search integration
+
+Search results should integrate smoothly with editing.
+
+Workflow example:
+- User searches
+- Aria returns matching results
+- User selects/open result
+- Editing begins immediately
+
+Search results should remain clickable.
+
+11. Typed assistant commands
+
+The same commands should work via:
+- voice
+- typed assistant input
+
+Examples:
+- typing:
+  “open my note on Stanford engineering”
+- typing:
+  “append LLMs are fun”
+
+should work identically.
+
+12. UI improvements
+
+Add:
+- active editing banner
+- editable status indicators
+- save state indicators
+- subtle animation when Aria updates a note/reminder
+
+Keep UI clean and lightweight.
+
+13. Preserve existing functionality
 
 Do not break:
 - local Whisper transcription
 - Claude API parsing
-- Aria voice interaction
-- in-app reminder popups
-- missed reminder indicators
 - reminders
 - recurring reminders
 - notes
 - meeting notes
 - Microsoft sync
 - AI search
+- reminder popups
 - sorting
-- resizable panes
+- resizable layouts
+- Aria insight system
 
-9. Tests
+14. Tests
 
 Add/update tests for:
-- “Press to stop” appears while recording
-- Windows notification code is disabled/removed
-- in-app reminder popup still works
-- recent notes overview is removed
-- upcoming reminders overview is removed
-- AI Search remains visible
-- helper text says “Click Aria to begin or just type.”
-- Aria Insights title is larger
-- Aria Insights content is left-aligned
-- default update frequency is 1 hour
+- voice search for notes
+- voice open note
+- voice append note
+- voice update reminder
+- active editing context tracking
+- save and close commands
+- overwrite confirmation
+- typed assistant commands
+- no-changes save message
+- unsaved changes warning
 
-10. README update
+15. README update
 
 Update README with:
-- in-app reminders only
-- no Windows toast notifications
-- AI Search-focused left panel
-- Aria Insights update frequency set to 1 hour
+- conversational editing workflows
+- voice editing examples
+- active editing context
+- supported assistant commands
+- save/close workflows
 
-Implementation rule:
-Patch the current app cleanly. Do not rewrite the whole app.
+Implementation rules:
+- Patch the existing architecture cleanly.
+- Do not rewrite the app.
+- Preserve user data.
+- Keep the assistant responsive and conversational.

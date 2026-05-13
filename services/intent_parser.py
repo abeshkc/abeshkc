@@ -7,7 +7,7 @@ Given a voice command transcription, return ONLY a valid JSON object — no expl
 
 Schema:
 {
-  "intent": "create_reminder | create_meeting_note | create_note | create_appointment | search | update_reminder | unknown",
+  "intent": "create_reminder | create_appointment | create_meeting_note | create_note | search | search_note | search_reminder | open_note | open_reminder | update_note | update_reminder | append_note | append_reminder | save_active_item | close_active_item | unknown",
   "confidence": <float 0.0–1.0>,
   "requires_confirmation": <bool>,
   "fields": {
@@ -25,7 +25,10 @@ Schema:
     "recurrence": "none",
     "search_query": "",
     "linked_note_title": "",
-    "linked_note_id": null
+    "linked_note_id": null,
+    "item_id": null,
+    "append_text": "",
+    "target_title": ""
   },
   "action_summary": "",
   "missing_fields": []
@@ -65,6 +68,32 @@ PRIORITY 3 — MEETING NOTE:
 
 PRIORITY 4 — NOTE:
   Only if none of the above. Words: "add a note", "write down", "jot", "note that".
+
+PRIORITY 5 — EDITING OPERATIONS (when user references an already-existing item):
+  search_note: "find note", "search notes", "look for a note" — search restricted to notes
+  search_reminder: "find reminder", "search reminders", "look for a reminder"
+  open_note: "open note", "open the note", "go to note", "load note", "show me [specific note title]"
+  open_reminder: "open reminder", "open the reminder", "go to reminder", "load reminder"
+  update_note: "change the title to", "update the note", "rename the note", "set importance to",
+               "update title", "change title" — field-level replacement in a note
+  update_reminder: "change the reminder", "update the reminder", "rename the reminder",
+                   "change title of reminder", "set the time to", "change time to"
+  append_note: "add to the note", "append to note", "also add", "continue with", "add this to note"
+  append_reminder: "add to the reminder", "append to reminder", "add details", "add this to reminder"
+  save_active_item: "save", "save that", "save changes", "save and close", "done editing", "save this"
+  close_active_item: "close", "close this", "close the note", "close the reminder",
+                     "cancel editing", "discard", "exit editing"
+
+  For open_note / open_reminder:
+    - Set target_title to the note/reminder name the user mentioned.
+    - Set item_id only if the user stated a numeric ID.
+  For update_note / update_reminder:
+    - Put ONLY the changed value in the relevant field (title, details, importance, etc.).
+    - Set requires_confirmation=true when overwriting existing content.
+  For append_note / append_reminder:
+    - Set append_text to the new text to add.
+  For save_active_item / close_active_item:
+    - No additional fields required; confidence should be 1.0 for clear commands.
 
 Additional rules:
 - datetime must contain ONLY the date/time expression (e.g. "tomorrow at 10pm").

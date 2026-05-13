@@ -29,7 +29,16 @@ _INTENT_LABELS = {
     "create_meeting_note": "Meeting Note",
     "create_note":         "Note",
     "search":              "Search",
+    "search_note":         "Search Notes",
+    "search_reminder":     "Search Reminders",
+    "open_note":           "Open Note",
+    "open_reminder":       "Open Reminder",
+    "update_note":         "Update Note",
     "update_reminder":     "Update Reminder",
+    "append_note":         "Append to Note",
+    "append_reminder":     "Append to Reminder",
+    "save_active_item":    "Save",
+    "close_active_item":   "Close",
     "unknown":             "Unknown",
 }
 
@@ -73,12 +82,16 @@ class _ToolTip:
 # ── main panel ────────────────────────────────────────────────────────────────
 
 class VoicePanel(ctk.CTkFrame):
-    def __init__(self, master, on_action=None, on_fill_reminder=None, on_fill_note=None):
+    def __init__(self, master, on_action=None, on_fill_reminder=None, on_fill_note=None,
+                 on_open_note=None, on_open_reminder=None, context=None):
         super().__init__(master, fg_color="transparent")
-        self._recorder         = AudioRecorder()
-        self._on_action        = on_action
-        self._on_fill_reminder = on_fill_reminder
-        self._on_fill_note     = on_fill_note
+        self._recorder          = AudioRecorder()
+        self._on_action         = on_action
+        self._on_fill_reminder  = on_fill_reminder
+        self._on_fill_note      = on_fill_note
+        self._on_open_note      = on_open_note
+        self._on_open_reminder  = on_open_reminder
+        self._context           = context
         self._last_action: dict | None = None
         self._last_transcription: str  = ""
         self._autosave_var = ctk.BooleanVar(value=False)
@@ -146,7 +159,23 @@ class VoicePanel(ctk.CTkFrame):
             voice_bar, height=48, wrap="word", state="disabled",
             font=ctk.CTkFont(size=11),
         )
-        self._preview.pack(fill="x", padx=14, pady=(2, 8))
+        self._preview.pack(fill="x", padx=14, pady=(2, 4))
+
+        # Typed command input
+        typed_row = ctk.CTkFrame(voice_bar, fg_color="transparent")
+        typed_row.pack(fill="x", padx=14, pady=(0, 8))
+        self._typed_var = ctk.StringVar()
+        self._typed_entry = ctk.CTkEntry(
+            typed_row, textvariable=self._typed_var,
+            placeholder_text="Type a command or question…",
+            font=ctk.CTkFont(size=12),
+        )
+        self._typed_entry.pack(side="left", fill="x", expand=True)
+        self._typed_entry.bind("<Return>", lambda e: self._submit_typed())
+        ctk.CTkButton(
+            typed_row, text="⏎", width=30, font=ctk.CTkFont(size=12),
+            command=self._submit_typed,
+        ).pack(side="left", padx=(4, 0))
 
         # ── Result panel (packed on demand above voice bar) ──
         self._result_panel = ctk.CTkFrame(left, corner_radius=8)
@@ -387,18 +416,26 @@ class VoicePanel(ctk.CTkFrame):
                 child.bind("<Button-1>", lambda e, it=item_copy: self._open_result(it))
 
     def _open_result(self, item: dict):
-        if item["type"] == "note" and self._on_fill_note:
-            from core.notes import get_note
-            note = get_note(item["id"])
-            if note:
-                self._on_fill_note({"title": note["title"],
-                                    "details": note["content"],
-                                    "importance": note.get("importance", "Normal"),
-                                    "note_date": note.get("note_date", ""),
-                                    "tags": [t.strip() for t in (note.get("tags") or "").split(",") if t.strip()]},
-                                   note.get("content", ""))
-        elif item["type"] == "reminder" and self._on_fill_reminder:
-            self._on_fill_reminder({"title": item["title"]})
+        if item["type"] == "note":
+            if self._on_open_note:
+                self._on_open_note(item["id"])
+            elif self._on_fill_note:
+                from core.notes import get_note
+                note = get_note(item["id"])
+                if note:
+                    self._on_fill_note(
+                        {"title": note["title"],
+                         "details": note["content"],
+                         "importance": note.get("importance", "Normal"),
+                         "note_date": note.get("note_date", ""),
+                         "tags": [t.strip() for t in (note.get("tags") or "").split(",") if t.strip()]},
+                        note.get("content", ""),
+                    )
+        elif item["type"] == "reminder":
+            if self._on_open_reminder:
+                self._on_open_reminder(item["id"])
+            elif self._on_fill_reminder:
+                self._on_fill_reminder({"title": item["title"]})
 
     # ── recording ─────────────────────────────────────────────────────────
 
@@ -437,6 +474,45 @@ class VoicePanel(ctk.CTkFrame):
         self._progress.pack_forget()
         self._avatar.set_state("idle")
         self._set_status("Click Aria to begin or just type.", "#445566")
+
+    def _submit_typed(self):
+        text = self._typed_var.get().strip()
+        if not text:
+            return
+        self._typed_var.set("")
+        self._avatar.set_state("thinking")
+        self._set_status("Understanding…", "gray")
+        threading.Thread(target=self._pipeline_text, args=(text,), daemon=True).start()
+
+    def _pipeline_text(self, text: str):
+        self._last_transcription = text
+        self._ui(lambda: self._set_preview(text))
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            action = _rule_based_intent(text)
+        else:
+            try:
+                action = claude_parse_intent(text)
+            except Exception:
+                action = _rule_based_intent(text)
+        self._last_action = action
+        intent = action.get("intent", "unknown")
+        if intent in ("search", "search_note", "search_reminder"):
+            query = action.get("fields", {}).get("search_query", text)
+            self._ui(lambda q=query: (self._re_enable_mic(), self._do_voice_search(q)))
+        elif intent in ("open_note", "open_reminder"):
+            self._ui(lambda i=intent, a=action: (self._re_enable_mic(), self._handle_open(i, a)))
+        elif intent in ("update_note", "update_reminder"):
+            self._ui(lambda i=intent, a=action, t=text: (
+                self._re_enable_mic(), self._handle_update(i, a, t)))
+        elif intent in ("append_note", "append_reminder"):
+            self._ui(lambda i=intent, a=action, t=text: (
+                self._re_enable_mic(), self._handle_append(i, a, t)))
+        elif intent == "save_active_item":
+            self._ui(lambda: (self._re_enable_mic(), self._handle_save_active()))
+        elif intent == "close_active_item":
+            self._ui(lambda: (self._re_enable_mic(), self._handle_close_active()))
+        else:
+            self._ui(lambda: (self._re_enable_mic(), self._show_result(text, action)))
 
     # ── pipeline ──────────────────────────────────────────────────────────
 
@@ -482,9 +558,21 @@ class VoicePanel(ctk.CTkFrame):
 
         self._last_action = action
         intent = action.get("intent", "unknown")
-        if intent == "search":
+        if intent in ("search", "search_note", "search_reminder"):
             query = action.get("fields", {}).get("search_query", text)
             self._ui(lambda q=query: (self._re_enable_mic(), self._do_voice_search(q)))
+        elif intent in ("open_note", "open_reminder"):
+            self._ui(lambda i=intent, a=action: (self._re_enable_mic(), self._handle_open(i, a)))
+        elif intent in ("update_note", "update_reminder"):
+            self._ui(lambda i=intent, a=action, t=text: (
+                self._re_enable_mic(), self._handle_update(i, a, t)))
+        elif intent in ("append_note", "append_reminder"):
+            self._ui(lambda i=intent, a=action, t=text: (
+                self._re_enable_mic(), self._handle_append(i, a, t)))
+        elif intent == "save_active_item":
+            self._ui(lambda: (self._re_enable_mic(), self._handle_save_active()))
+        elif intent == "close_active_item":
+            self._ui(lambda: (self._re_enable_mic(), self._handle_close_active()))
         else:
             self._ui(lambda: self._set_status("Filling preview…", "gray"))
             self._ui(lambda: (self._re_enable_mic(), self._show_result(text, action)))
@@ -655,7 +743,7 @@ class VoicePanel(ctk.CTkFrame):
         self._set_status(f"Saved: {msg}", "#27ae60")
         self._hide_result()
         if self._on_action:
-            self._on_action()
+            self._on_action("refresh")
 
     def _re_record(self):
         self._hide_result()
@@ -667,6 +755,100 @@ class VoicePanel(ctk.CTkFrame):
         self._hide_result()
         self._set_preview("")
         self._set_status("Click Aria to begin or just type.", "#445566")
+
+    # ── editing intent handlers ───────────────────────────────────────────
+
+    def _handle_open(self, intent: str, action: dict) -> None:
+        fields = action.get("fields", {})
+        target = fields.get("target_title", "") or fields.get("title", "")
+        item_id = fields.get("item_id")
+        if intent == "open_note":
+            if item_id and self._on_open_note:
+                self._on_open_note(int(item_id))
+                self._set_status("Note opened.", "#27ae60")
+            elif target:
+                from core.notes import list_notes
+                matches = list_notes(target)
+                if matches and self._on_open_note:
+                    self._on_open_note(matches[0]["id"])
+                    self._set_status(f'Opened note: "{matches[0]["title"]}"', "#27ae60")
+                else:
+                    self._set_status(f'No note found matching "{target}"', "#e67e22")
+            else:
+                self._set_status("Please specify a note name.", "#e67e22")
+        elif intent == "open_reminder":
+            if item_id and self._on_open_reminder:
+                self._on_open_reminder(int(item_id))
+                self._set_status("Reminder opened.", "#27ae60")
+            elif target:
+                from core.reminders import list_reminders
+                matches = [r for r in list_reminders() if target.lower() in r["title"].lower()]
+                if matches and self._on_open_reminder:
+                    self._on_open_reminder(matches[0]["id"])
+                    self._set_status(f'Opened reminder: "{matches[0]["title"]}"', "#27ae60")
+                else:
+                    self._set_status(f'No reminder found matching "{target}"', "#e67e22")
+            else:
+                self._set_status("Please specify a reminder name.", "#e67e22")
+
+    def _handle_update(self, intent: str, action: dict, transcription: str) -> None:
+        fields = action.get("fields", {})
+        ctx = self._context
+        if intent == "update_note":
+            if ctx and ctx.active_item_type == "note" and ctx.active_item_id:
+                if self._on_fill_note:
+                    self._on_fill_note(fields, transcription, mode="update_fields")
+                    self._set_status("Note fields updated — review and save.", "#27ae60")
+            else:
+                self._set_status("No note is currently open.", "#e67e22")
+        elif intent == "update_reminder":
+            if ctx and ctx.active_item_type == "reminder" and ctx.active_item_id:
+                if self._on_fill_reminder:
+                    self._on_fill_reminder(fields, mode="update_fields")
+                    self._set_status("Reminder fields updated — review and save.", "#27ae60")
+            else:
+                self._set_status("No reminder is currently open.", "#e67e22")
+
+    def _handle_append(self, intent: str, action: dict, transcription: str) -> None:
+        fields = action.get("fields", {})
+        append_text = fields.get("append_text") or fields.get("details") or transcription
+        ctx = self._context
+        if intent == "append_note":
+            if ctx and ctx.active_item_type == "note" and ctx.active_item_id:
+                if self._on_fill_note:
+                    self._on_fill_note({"append_text": append_text}, transcription, mode="append")
+                    self._set_status("Text appended — review and save.", "#27ae60")
+            else:
+                self._set_status("No note is currently open.", "#e67e22")
+        elif intent == "append_reminder":
+            if ctx and ctx.active_item_type == "reminder" and ctx.active_item_id:
+                if self._on_fill_reminder:
+                    self._on_fill_reminder({"append_text": append_text}, mode="append")
+                    self._set_status("Details updated — review and save.", "#27ae60")
+            else:
+                self._set_status("No reminder is currently open.", "#e67e22")
+
+    def _handle_save_active(self) -> None:
+        ctx = self._context
+        if not ctx or ctx.active_item_id is None:
+            self._set_status("Nothing to save.", "#e67e22")
+            return
+        if self._on_action:
+            self._on_action("save_active")
+        self._set_status("✓ Saved", "#27ae60")
+
+    def _handle_close_active(self) -> None:
+        ctx = self._context
+        if not ctx or ctx.active_item_id is None:
+            self._set_status("Nothing is open.", "#e67e22")
+            return
+        if ctx.unsaved_changes:
+            if not mb.askyesno("Unsaved changes",
+                               "You have unsaved changes. Close without saving?"):
+                return
+        if self._on_action:
+            self._on_action("close_active")
+        self._set_status("Closed.", "#5d8dbb")
 
     # ── execution ─────────────────────────────────────────────────────────
 
@@ -890,6 +1072,24 @@ def _rule_based_intent(text: str) -> dict:
     # Search ALWAYS wins when a retrieval verb is present — check first.
     if any(t.startswith(v) or f" {v} " in t or t == v for v in _SEARCH_VERBS):
         intent = "search"
+    elif any(w in t for w in ["open note", "open the note", "go to note", "load note",
+                               "show note"]):
+        intent = "open_note"
+    elif any(w in t for w in ["open reminder", "open the reminder", "go to reminder",
+                               "load reminder"]):
+        intent = "open_reminder"
+    elif any(w in t for w in ["append to note", "add to note", "also add", "append to the note",
+                               "add this to note", "add to the note"]):
+        intent = "append_note"
+    elif any(w in t for w in ["append to reminder", "add to reminder", "add to the reminder",
+                               "append to the reminder"]):
+        intent = "append_reminder"
+    elif any(w in t for w in ["save changes", "save this", "save that", "save and close",
+                               "done editing"]) or t.strip() == "save":
+        intent = "save_active_item"
+    elif any(w in t for w in ["close this", "close the note", "close the reminder",
+                               "cancel editing", "exit editing", "discard changes"]) or t.strip() == "close":
+        intent = "close_active_item"
     elif any(w in t for w in ["remind me", "set a reminder", "reminder", "appointment",
                                "schedule", "alert me"]):
         intent = "create_reminder"
@@ -952,6 +1152,9 @@ def _rule_based_intent(text: str) -> dict:
             "recurrence": "none",
             "search_query": search_query,
             "linked_note_title": "", "linked_note_id": None,
+            "item_id": None,
+            "append_text": text if intent in ("append_note", "append_reminder") else "",
+            "target_title": title,
         },
         "action_summary": f"[Rule-based] {intent}: {search_query or title}",
         "missing_fields": missing,

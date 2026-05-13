@@ -14,11 +14,12 @@ _SORT_KEYS    = {"Updated date": "updated_at", "Created date": "created_at",
 
 
 class NotesView(ctk.CTkFrame):
-    def __init__(self, master):
+    def __init__(self, master, context=None):
         super().__init__(master, fg_color="transparent")
         self._current_id: int | None = None
         self._sort_by  = "updated_at"
         self._sort_asc = False
+        self._context  = context
         self._build()
 
     def _build(self):
@@ -70,6 +71,19 @@ class NotesView(ctk.CTkFrame):
         # ── RIGHT: editor ──────────────────────────────────────────────────
         right = ctk.CTkFrame(pane)
 
+        # Aria editing banner (shown when a note is open)
+        self._edit_banner = ctk.CTkFrame(right, fg_color="#1a2540", corner_radius=6)
+        self._banner_lbl  = ctk.CTkLabel(
+            self._edit_banner, text="",
+            font=ctk.CTkFont(size=12), text_color="#5d8dbb", anchor="w",
+        )
+        self._banner_lbl.pack(side="left", padx=10, pady=4)
+        self._dirty_lbl = ctk.CTkLabel(
+            self._edit_banner, text="",
+            font=ctk.CTkFont(size=11), text_color="#e67e22",
+        )
+        self._dirty_lbl.pack(side="right", padx=10)
+
         ctk.CTkLabel(
             right, text="📝  New Note",
             font=ctk.CTkFont(size=15, weight="bold"),
@@ -113,6 +127,13 @@ class NotesView(ctk.CTkFrame):
         self._content_box = ctk.CTkTextbox(right, wrap="word",
                                            font=ctk.CTkFont(size=13))
         self._content_box.pack(fill="both", expand=True, padx=14, pady=(2, 8))
+        self._content_box.bind("<<Modified>>", self._mark_dirty)
+
+        # Dirty tracking on text vars
+        self._title_var.trace_add("write", self._mark_dirty)
+        self._tags_var.trace_add("write", self._mark_dirty)
+        self._note_date_var.trace_add("write", self._mark_dirty)
+        self._imp_var.trace_add("write", self._mark_dirty)
 
         btn_row = ctk.CTkFrame(right, fg_color="transparent")
         btn_row.pack(fill="x", padx=14, pady=(0, 14))
@@ -193,9 +214,13 @@ class NotesView(ctk.CTkFrame):
         self._title_var.set(note["title"])
         self._content_box.delete("1.0", "end")
         self._content_box.insert("1.0", note["content"])
+        self._content_box.edit_reset()
         self._tags_var.set(note["tags"])
         self._imp_var.set(note.get("importance", "Normal"))
         self._note_date_var.set(note.get("note_date") or "")
+        if self._context:
+            self._context.set_note(note["id"], note["title"])
+        self._update_banner()
 
     def _new_note(self):
         nid = create_note("New Note")
@@ -215,9 +240,13 @@ class NotesView(ctk.CTkFrame):
             importance=self._imp_var.get(),
             note_date=self._note_date_var.get(),
         )
+        if self._context:
+            self._context.unsaved_changes = False
+            self._context.active_item_title = self._title_var.get()
         self.refresh()
         self._save_label.configure(text="✓ Saved")
         self.after(2000, lambda: self._save_label.configure(text=""))
+        self._update_banner()
 
     def _delete(self):
         if self._current_id is None:
@@ -235,4 +264,87 @@ class NotesView(ctk.CTkFrame):
         self._tags_var.set("")
         self._imp_var.set("Normal")
         self._note_date_var.set("")
+        if self._context:
+            self._context.clear()
+        self._update_banner()
         self.refresh()
+
+    def _mark_dirty(self, *_):
+        if self._current_id is not None and self._context:
+            self._context.mark_dirty()
+            self._update_banner()
+
+    def _update_banner(self):
+        if self._current_id is None:
+            self._edit_banner.pack_forget()
+            return
+        self._edit_banner.pack(fill="x", padx=14, pady=(8, 4))
+        title = self._title_var.get() or "(untitled)"
+        self._banner_lbl.configure(text=f"✦  Editing: {title}")
+        if self._context and self._context.unsaved_changes:
+            self._dirty_lbl.configure(text="● unsaved")
+        else:
+            self._dirty_lbl.configure(text="")
+
+    def _flash_content(self):
+        try:
+            self._content_box.configure(border_color="#2563eb", border_width=2)
+            self.after(600, lambda: self._content_box.configure(
+                border_color=["#979DA2", "#565B5E"], border_width=0))
+        except Exception:
+            pass
+
+    # ── public voice-edit methods ────────────────────────────────────────────
+
+    def open_note(self, note_id: int) -> None:
+        note = get_note(note_id)
+        if note:
+            self._load_note(note)
+
+    def voice_append(self, text: str) -> None:
+        if self._current_id is None:
+            return
+        current = self._content_box.get("1.0", "end").rstrip()
+        self._content_box.delete("1.0", "end")
+        self._content_box.insert("1.0", current + ("\n\n" if current else "") + text)
+        if self._context:
+            self._context.mark_dirty()
+        self._flash_content()
+        self._update_banner()
+
+    def voice_update_fields(self, fields: dict) -> None:
+        if self._current_id is None:
+            return
+        if fields.get("title"):
+            self._title_var.set(fields["title"])
+        tags = fields.get("tags")
+        if tags:
+            self._tags_var.set(", ".join(tags) if isinstance(tags, list) else tags)
+        if fields.get("importance") and fields["importance"] in IMPORTANCE_LEVELS:
+            self._imp_var.set(fields["importance"])
+        if fields.get("note_date"):
+            self._note_date_var.set(fields["note_date"])
+        if self._context:
+            self._context.mark_dirty()
+        self._flash_content()
+        self._update_banner()
+
+    def voice_save(self) -> str:
+        if self._current_id is None:
+            return "Nothing to save."
+        self._save()
+        return f'Saved "{self._title_var.get()}"'
+
+    def voice_close(self, confirmed: bool = False) -> bool:
+        if self._context and self._context.unsaved_changes and not confirmed:
+            return False
+        self._current_id = None
+        self._title_var.set("")
+        self._content_box.delete("1.0", "end")
+        self._tags_var.set("")
+        self._imp_var.set("Normal")
+        self._note_date_var.set("")
+        if self._context:
+            self._context.clear()
+        self._update_banner()
+        return True

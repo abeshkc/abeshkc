@@ -4,7 +4,8 @@ import customtkinter as ctk
 from datetime import datetime
 from core.reminders import (
     create_reminder, list_reminders, list_done_reminders,
-    mark_done, delete_reminder, RECURRENCE_TYPES, IMPORTANCE_LEVELS,
+    mark_done, delete_reminder, get_reminder, update_reminder,
+    RECURRENCE_TYPES, IMPORTANCE_LEVELS,
 )
 from core.notes import list_notes
 from core.parser import parse_datetime
@@ -18,30 +19,80 @@ _SORT_KEYS    = {"Due date": "due_at", "Importance": "importance",
 
 
 class RemindersView(ctk.CTkFrame):
-    def __init__(self, master):
+    def __init__(self, master, context=None):
         super().__init__(master, fg_color="transparent")
         self._notes: list[dict] = []
         self._sort_by  = "due_at"
         self._sort_asc = True
+        self._edit_id: int | None = None
+        self._context  = context
         self._build()
 
     def _build(self):
-        pane = tk.PanedWindow(
-            self, orient="vertical",
+        # Horizontal split: list left | edit form right
+        hpane = tk.PanedWindow(
+            self, orient="horizontal",
             sashwidth=5, sashrelief="flat",
             background="#3a3a4a", bd=0,
         )
-        pane.pack(fill="both", expand=True)
+        hpane.pack(fill="both", expand=True, padx=8, pady=8)
 
-        # ── TOP: create form ─────────────────────────────────────────────
-        form_frame = ctk.CTkFrame(pane, corner_radius=0, fg_color="transparent")
-        form       = ctk.CTkFrame(form_frame)
-        form.pack(fill="x", padx=8, pady=(8, 4))
+        # ── LEFT: sort + tabs ────────────────────────────────────────────
+        list_frame = ctk.CTkFrame(hpane, width=320, corner_radius=0, fg_color="transparent")
 
-        ctk.CTkLabel(
-            form, text="🔔  New Reminder",
+        sort_bar = ctk.CTkFrame(list_frame, fg_color="transparent")
+        sort_bar.pack(fill="x", padx=8, pady=(6, 2))
+        ctk.CTkLabel(sort_bar, text="Sort:", font=ctk.CTkFont(size=12),
+                     text_color="gray").pack(side="left", padx=(4, 4))
+        self._sort_var = ctk.StringVar(value="Due date")
+        ctk.CTkOptionMenu(
+            sort_bar, variable=self._sort_var, values=_SORT_OPTIONS,
+            width=130, font=ctk.CTkFont(size=12),
+            command=self._on_sort_change,
+        ).pack(side="left")
+        self._asc_btn = ctk.CTkButton(
+            sort_bar, text="↑ Asc", width=72,
+            fg_color="transparent", border_width=1,
+            font=ctk.CTkFont(size=12),
+            command=self._toggle_sort_dir,
+        )
+        self._asc_btn.pack(side="left", padx=(6, 0))
+
+        self._tabs = ctk.CTkTabview(list_frame)
+        self._tabs.pack(fill="both", expand=True, padx=8, pady=(2, 8))
+        self._tabs.add("Upcoming")
+        self._tabs.add("Done")
+
+        self._upcoming_frame = ctk.CTkScrollableFrame(self._tabs.tab("Upcoming"))
+        self._upcoming_frame.pack(fill="both", expand=True)
+        self._done_frame = ctk.CTkScrollableFrame(self._tabs.tab("Done"))
+        self._done_frame.pack(fill="both", expand=True)
+
+        hpane.add(list_frame, minsize=260, stretch="never")
+
+        # ── RIGHT: create / edit form ────────────────────────────────────
+        right = ctk.CTkFrame(hpane)
+
+        # Aria editing banner (shown when an existing reminder is loaded)
+        self._edit_banner = ctk.CTkFrame(right, fg_color="#1a2540", corner_radius=6)
+        self._banner_lbl  = ctk.CTkLabel(
+            self._edit_banner, text="",
+            font=ctk.CTkFont(size=12), text_color="#5d8dbb", anchor="w",
+        )
+        self._banner_lbl.pack(side="left", padx=10, pady=4)
+        self._dirty_lbl = ctk.CTkLabel(
+            self._edit_banner, text="",
+            font=ctk.CTkFont(size=11), text_color="#e67e22",
+        )
+        self._dirty_lbl.pack(side="right", padx=10)
+
+        self._form_header = ctk.CTkLabel(
+            right, text="🔔  New Reminder",
             font=ctk.CTkFont(size=15, weight="bold"),
-        ).pack(anchor="w", padx=14, pady=(12, 8))
+        )
+        self._form_header.pack(anchor="w", padx=14, pady=(12, 8))
+
+        form = right   # use right frame directly for field rows
 
         def _row(parent):
             f = ctk.CTkFrame(parent, fg_color="transparent")
@@ -127,51 +178,29 @@ class RemindersView(ctk.CTkFrame):
 
         btn_row = ctk.CTkFrame(form, fg_color="transparent")
         btn_row.pack(fill="x", padx=14, pady=(0, 12))
-        ctk.CTkButton(btn_row, text="Create Reminder",
-                      font=ctk.CTkFont(size=13),
-                      command=self._create).pack(side="left")
+        self._save_btn = ctk.CTkButton(btn_row, text="Create Reminder",
+                                       font=ctk.CTkFont(size=13),
+                                       command=self._save_or_create)
+        self._save_btn.pack(side="left")
+        self._delete_btn = ctk.CTkButton(
+            btn_row, text="🗑  Delete", font=ctk.CTkFont(size=13),
+            fg_color="#c0392b", hover_color="#922b21",
+            command=self._delete_current)
+        # Delete button only shown when editing an existing reminder
         self._status_label = ctk.CTkLabel(btn_row, text="",
                                           font=ctk.CTkFont(size=13))
         self._status_label.pack(side="left", padx=(14, 0))
 
-        pane.add(form_frame, minsize=240, stretch="never")
-
-        # ── BOTTOM: sort + tabs ──────────────────────────────────────────
-        list_frame = ctk.CTkFrame(pane, corner_radius=0, fg_color="transparent")
-
-        sort_bar = ctk.CTkFrame(list_frame, fg_color="transparent")
-        sort_bar.pack(fill="x", padx=8, pady=(6, 2))
-        ctk.CTkLabel(sort_bar, text="Sort:", font=ctk.CTkFont(size=12),
-                     text_color="gray").pack(side="left", padx=(4, 4))
-        self._sort_var = ctk.StringVar(value="Due date")
-        ctk.CTkOptionMenu(
-            sort_bar, variable=self._sort_var, values=_SORT_OPTIONS,
-            width=130, font=ctk.CTkFont(size=12),
-            command=self._on_sort_change,
-        ).pack(side="left")
-        self._asc_btn = ctk.CTkButton(
-            sort_bar, text="↑ Asc", width=72,
-            fg_color="transparent", border_width=1,
-            font=ctk.CTkFont(size=12),
-            command=self._toggle_sort_dir,
-        )
-        self._asc_btn.pack(side="left", padx=(6, 0))
-
-        self._tabs = ctk.CTkTabview(list_frame)
-        self._tabs.pack(fill="both", expand=True, padx=8, pady=(2, 8))
-        self._tabs.add("Upcoming")
-        self._tabs.add("Done")
-
-        self._upcoming_frame = ctk.CTkScrollableFrame(self._tabs.tab("Upcoming"))
-        self._upcoming_frame.pack(fill="both", expand=True)
-        self._done_frame = ctk.CTkScrollableFrame(self._tabs.tab("Done"))
-        self._done_frame.pack(fill="both", expand=True)
-
-        pane.add(list_frame, minsize=180, stretch="always")
+        hpane.add(right, minsize=380, stretch="always")
 
     # ── public ────────────────────────────────────────────────────────────
 
     def fill_from_voice(self, fields: dict):
+        self._edit_id = None
+        self._form_header.configure(text="🔔  New Reminder")
+        self._save_btn.configure(text="Create Reminder")
+        self._delete_btn.pack_forget()
+        self._edit_banner.pack_forget()
         title   = fields.get("title", "").strip()
         dt_str  = (fields.get("datetime") or
                    f"{fields.get('date', '')} {fields.get('time', '')}".strip())
@@ -189,6 +218,23 @@ class RemindersView(ctk.CTkFrame):
         if imp and imp in IMPORTANCE_LEVELS:
             self._imp_var.set(imp)
         self._status("Filled from voice — review and click Create Reminder.", "#5d8dbb")
+
+    def fill_from_voice_edit(self, reminder_id: int, fields: dict) -> None:
+        r = get_reminder(reminder_id)
+        if not r:
+            return
+        self._load_reminder(r)
+        if fields.get("title"):
+            self._title_var.set(fields["title"])
+        dt_str = fields.get("datetime") or f"{fields.get('date','')} {fields.get('time','')}".strip()
+        if dt_str:
+            self._when_var.set(dt_str)
+        details = fields.get("details") or fields.get("description") or fields.get("append_text")
+        if details:
+            current = self._details_var.get().strip()
+            self._details_var.set((current + "\n" + details).strip() if current else details)
+        if fields.get("importance") and fields["importance"] in IMPORTANCE_LEVELS:
+            self._imp_var.set(fields["importance"])
 
     def refresh(self):
         self._notes = list_notes()
@@ -245,9 +291,11 @@ class RemindersView(ctk.CTkFrame):
             label += f"  ↻ {r['recurrence_type']}"
         imp       = r.get("importance", "Normal")
         imp_color = _IMP_COLORS.get(imp, "gray")
-        ctk.CTkLabel(row, text=f"  {label}", anchor="w",
-                     font=ctk.CTkFont(size=13, weight="bold")).pack(
-            side="left", fill="x", expand=True, padx=(4, 0))
+        title_lbl = ctk.CTkLabel(row, text=f"  {label}", anchor="w",
+                                  font=ctk.CTkFont(size=13, weight="bold"),
+                                  cursor="hand2")
+        title_lbl.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        title_lbl.bind("<Button-1>", lambda e, rc=dict(r): self._load_reminder(rc))
         if imp != "Normal":
             ctk.CTkLabel(row, text=imp, text_color=imp_color,
                          font=ctk.CTkFont(size=12)).pack(side="left", padx=4)
@@ -272,7 +320,7 @@ class RemindersView(ctk.CTkFrame):
         ctk.CTkLabel(row, text=f"Completed {completed}", text_color="gray",
                      font=ctk.CTkFont(size=12)).pack(side="left", padx=8)
 
-    def _create(self):
+    def _save_or_create(self):
         title     = self._title_var.get().strip()
         when_text = self._when_var.get().strip()
         if not title:
@@ -295,26 +343,131 @@ class RemindersView(ctk.CTkFrame):
         remind_before = ",".join(
             str(m) for m, var in self._remind_before_vars.items() if var.get()
         )
-        note_id: int | None = None
-        sel = self._note_var.get()
-        if sel != "None":
-            note_id = int(sel.split(":")[0])
-        create_reminder(
-            title, due, message=details, note_id=note_id,
-            recurrence_type=recur, recurrence_interval=interval,
-            importance=imp, remind_before=remind_before,
-        )
+        if self._edit_id is not None:
+            update_reminder(
+                self._edit_id, title, due, message=details,
+                recurrence_type=recur, recurrence_interval=interval,
+                importance=imp, remind_before=remind_before,
+            )
+            if self._context:
+                self._context.unsaved_changes = False
+                self._context.active_item_title = title
+            self._status(f"✓ Saved: {title}", "#27ae60")
+            self._update_banner()
+        else:
+            note_id: int | None = None
+            sel = self._note_var.get()
+            if sel != "None":
+                note_id = int(sel.split(":")[0])
+            create_reminder(
+                title, due, message=details, note_id=note_id,
+                recurrence_type=recur, recurrence_interval=interval,
+                importance=imp, remind_before=remind_before,
+            )
+            self._title_var.set("")
+            self._when_var.set("")
+            self._details_var.set("")
+            self._note_var.set("None")
+            self._recur_var.set("none")
+            self._interval_var.set("1")
+            self._imp_var.set("Normal")
+            for var in self._remind_before_vars.values():
+                var.set(False)
+            self._status(f"✓ Set for {due.strftime('%b %d at %H:%M')}", "#27ae60")
+        self.refresh()
+
+    def _delete_current(self):
+        if self._edit_id is None:
+            return
+        title = self._title_var.get() or "(untitled)"
+        if not mb.askyesno(
+            "Delete Reminder",
+            f'Are you sure you want to delete "{title}"?\n\nThis cannot be undone.',
+        ):
+            return
+        delete_reminder(self._edit_id)
+        self._edit_id = None
+        self._form_header.configure(text="🔔  New Reminder")
+        self._save_btn.configure(text="Create Reminder")
+        self._delete_btn.pack_forget()
         self._title_var.set("")
         self._when_var.set("")
         self._details_var.set("")
-        self._note_var.set("None")
         self._recur_var.set("none")
         self._interval_var.set("1")
         self._imp_var.set("Normal")
         for var in self._remind_before_vars.values():
             var.set(False)
-        self._status(f"✓ Set for {due.strftime('%b %d at %H:%M')}", "#27ae60")
+        if self._context:
+            self._context.clear()
+        self._update_banner()
         self.refresh()
+
+    def _load_reminder(self, r: dict) -> None:
+        self._edit_id = r["id"]
+        self._title_var.set(r.get("title", ""))
+        self._when_var.set((r.get("due_at") or "")[:16])
+        self._details_var.set(r.get("message") or "")
+        imp = r.get("importance", "Normal")
+        self._imp_var.set(imp if imp in IMPORTANCE_LEVELS else "Normal")
+        recur = r.get("recurrence_type", "none")
+        self._recur_var.set(recur if recur in RECURRENCE_TYPES else "none")
+        self._interval_var.set(str(r.get("recurrence_interval", 1)))
+        rb_str = r.get("remind_before") or ""
+        rb_vals = set(rb_str.split(",")) if rb_str else set()
+        for m, var in self._remind_before_vars.items():
+            var.set(str(m) in rb_vals)
+        self._form_header.configure(text=f"🔔  Editing: {r.get('title','')}")
+        self._save_btn.configure(text="💾  Save Changes")
+        self._delete_btn.pack(side="left", padx=(10, 0))
+        if self._context:
+            self._context.set_reminder(r["id"], r.get("title", ""))
+        self._update_banner()
+
+    def _update_banner(self):
+        if self._edit_id is None:
+            self._edit_banner.pack_forget()
+            return
+        self._edit_banner.pack(fill="x", padx=14, pady=(8, 4))
+        title = self._title_var.get() or "(untitled)"
+        self._banner_lbl.configure(text=f"✦  Editing: {title}")
+        if self._context and self._context.unsaved_changes:
+            self._dirty_lbl.configure(text="● unsaved")
+        else:
+            self._dirty_lbl.configure(text="")
+
+    # ── public voice-edit methods ────────────────────────────────────────────
+
+    def open_reminder(self, reminder_id: int) -> None:
+        r = get_reminder(reminder_id)
+        if r:
+            self._load_reminder(r)
+
+    def voice_save(self) -> str:
+        if self._edit_id is None:
+            return "Nothing to save."
+        self._save_or_create()
+        return f'Saved "{self._title_var.get()}"'
+
+    def voice_close(self, confirmed: bool = False) -> bool:
+        if self._context and self._context.unsaved_changes and not confirmed:
+            return False
+        self._edit_id = None
+        self._form_header.configure(text="🔔  New Reminder")
+        self._save_btn.configure(text="Create Reminder")
+        self._delete_btn.pack_forget()
+        self._title_var.set("")
+        self._when_var.set("")
+        self._details_var.set("")
+        self._recur_var.set("none")
+        self._interval_var.set("1")
+        self._imp_var.set("Normal")
+        for var in self._remind_before_vars.values():
+            var.set(False)
+        if self._context:
+            self._context.clear()
+        self._update_banner()
+        return True
 
     def _done(self, rid: int):
         mark_done(rid)

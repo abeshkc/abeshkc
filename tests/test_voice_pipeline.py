@@ -703,10 +703,11 @@ class TestVoiceUX(unittest.TestCase):
         print("  PASS test_sidebar_has_emoji_icons")
 
     def test_reminder_no_auto_confirm_on_create(self):
-        """RemindersView._create must NOT call mb.askyesno (confirmation removed)."""
+        """RemindersView._save_or_create must NOT call mb.askyesno for creation path."""
         import inspect
         import ui.reminders_view as rv
-        src = inspect.getsource(rv.RemindersView._create)
+        # Method was renamed from _create to _save_or_create
+        src = inspect.getsource(rv.RemindersView._save_or_create)
         self.assertNotIn("askyesno", src)
         print("  PASS test_reminder_no_auto_confirm_on_create")
 
@@ -848,6 +849,147 @@ class TestVoiceUX(unittest.TestCase):
         print("  PASS test_recording_workflow_intact")
 
 
+# ── new editing workflow tests ────────────────────────────────────────────────
+
+class TestUpdateReminder(unittest.TestCase):
+    """Tests for get_reminder and update_reminder added to core/reminders.py."""
+
+    def setUp(self):
+        from core.reminders import create_reminder, get_reminder, update_reminder
+        self.create  = create_reminder
+        self.get     = get_reminder
+        self.update  = update_reminder
+        self.base_dt = datetime(2030, 1, 15, 9, 0)
+
+    def test_get_reminder_returns_dict(self):
+        rid = self.create("Get-test reminder", self.base_dt, importance="Normal")
+        r   = self.get(rid)
+        self.assertIsInstance(r, dict)
+        self.assertEqual(r["id"], rid)
+        self.assertEqual(r["title"], "Get-test reminder")
+        print("  PASS test_get_reminder_returns_dict")
+
+    def test_update_reminder_changes_title(self):
+        rid = self.create("Old title", self.base_dt)
+        self.update(rid, "New title", self.base_dt)
+        r = self.get(rid)
+        self.assertEqual(r["title"], "New title")
+        print("  PASS test_update_reminder_changes_title")
+
+    def test_update_reminder_changes_importance(self):
+        rid = self.create("Imp test", self.base_dt, importance="Normal")
+        self.update(rid, "Imp test", self.base_dt, importance="Urgent")
+        r = self.get(rid)
+        self.assertEqual(r["importance"], "Urgent")
+        print("  PASS test_update_reminder_changes_importance")
+
+    def test_update_reminder_changes_due(self):
+        new_dt = datetime(2030, 6, 1, 10, 30)
+        rid = self.create("Due test", self.base_dt)
+        self.update(rid, "Due test", new_dt)
+        r = self.get(rid)
+        self.assertIn("2030-06-01", r["due_at"])
+        print("  PASS test_update_reminder_changes_due")
+
+    def test_update_reminder_nonexistent_noop(self):
+        try:
+            self.update(999999, "Ghost", self.base_dt)
+        except Exception as exc:
+            self.fail(f"update_reminder raised on nonexistent id: {exc}")
+        print("  PASS test_update_reminder_nonexistent_noop")
+
+
+class TestAriaContext(unittest.TestCase):
+    """Tests for the AriaContext shared editing state dataclass."""
+
+    def setUp(self):
+        from ui.aria_context import AriaContext
+        self.ctx = AriaContext()
+
+    def test_set_note_populates_fields(self):
+        self.ctx.set_note(5, "Stanford Notes")
+        self.assertEqual(self.ctx.active_item_type, "note")
+        self.assertEqual(self.ctx.active_item_id, 5)
+        self.assertEqual(self.ctx.active_item_title, "Stanford Notes")
+        self.assertFalse(self.ctx.unsaved_changes)
+        print("  PASS test_set_note_populates_fields")
+
+    def test_set_reminder_populates_fields(self):
+        self.ctx.set_reminder(12, "Doctor Appointment")
+        self.assertEqual(self.ctx.active_item_type, "reminder")
+        self.assertEqual(self.ctx.active_item_id, 12)
+        self.assertEqual(self.ctx.active_item_title, "Doctor Appointment")
+        print("  PASS test_set_reminder_populates_fields")
+
+    def test_mark_dirty_sets_unsaved(self):
+        self.ctx.set_note(1, "Test")
+        self.ctx.mark_dirty()
+        self.assertTrue(self.ctx.unsaved_changes)
+        print("  PASS test_mark_dirty_sets_unsaved")
+
+    def test_clear_resets_all(self):
+        self.ctx.set_note(1, "Test")
+        self.ctx.mark_dirty()
+        self.ctx.clear()
+        self.assertIsNone(self.ctx.active_item_type)
+        self.assertIsNone(self.ctx.active_item_id)
+        self.assertIsNone(self.ctx.active_item_title)
+        self.assertFalse(self.ctx.unsaved_changes)
+        print("  PASS test_clear_resets_all")
+
+
+class TestEditingIntents(unittest.TestCase):
+    """Tests for new editing intents in rule-based fallback and intent_parser schema."""
+
+    def setUp(self):
+        from ui.voice_panel import _rule_based_intent
+        self.parse = _rule_based_intent
+
+    def test_open_note_intent_detected(self):
+        r = self.parse("open note Stanford Engineering")
+        self.assertEqual(r["intent"], "open_note")
+        print("  PASS test_open_note_intent_detected")
+
+    def test_open_reminder_intent_detected(self):
+        r = self.parse("open reminder dentist appointment")
+        self.assertEqual(r["intent"], "open_reminder")
+        print("  PASS test_open_reminder_intent_detected")
+
+    def test_append_note_intent_detected(self):
+        r = self.parse("append to note: also check Q2 budget")
+        self.assertEqual(r["intent"], "append_note")
+        print("  PASS test_append_note_intent_detected")
+
+    def test_save_active_intent_detected(self):
+        r = self.parse("save changes")
+        self.assertEqual(r["intent"], "save_active_item")
+        print("  PASS test_save_active_intent_detected")
+
+    def test_close_active_intent_detected(self):
+        r = self.parse("close this note")
+        self.assertEqual(r["intent"], "close_active_item")
+        print("  PASS test_close_active_intent_detected")
+
+    def test_new_intents_in_schema(self):
+        from services.intent_parser import _SYSTEM
+        new_intents = [
+            "search_note", "search_reminder", "open_note", "open_reminder",
+            "update_note", "update_reminder", "append_note", "append_reminder",
+            "save_active_item", "close_active_item",
+        ]
+        for intent in new_intents:
+            self.assertIn(intent, _SYSTEM,
+                          f"Intent '{intent}' missing from _SYSTEM schema")
+        print("  PASS test_new_intents_in_schema")
+
+    def test_new_fields_in_schema(self):
+        from services.intent_parser import _SYSTEM
+        for field in ("item_id", "append_text", "target_title"):
+            self.assertIn(field, _SYSTEM,
+                          f"Field '{field}' missing from _SYSTEM schema")
+        print("  PASS test_new_fields_in_schema")
+
+
 # ── runner ────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -864,6 +1006,9 @@ if __name__ == "__main__":
         TestImportanceField,
         TestSorting,
         TestVoiceUX,
+        TestUpdateReminder,
+        TestAriaContext,
+        TestEditingIntents,
     ]:
         suite.addTests(loader.loadTestsFromTestCase(cls))
 
